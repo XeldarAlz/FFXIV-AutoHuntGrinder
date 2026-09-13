@@ -42,5 +42,11 @@ internal static class GeneralSettings
             SettingsControls.ToggleWidth,
             () => SettingsControls.DrawToggle(configuration, () => configuration.AutoPauseInContent, value => configuration.AutoPauseInContent = value, "##ahg_general_autopause"),
             SettingsRow.ToggleHeight);
+
+        SettingsRow.Draw(Loc.T(L.Session.AutoResume),
+            Loc.T(L.Session.AutoResumeHelp),
+            SettingsControls.ToggleWidth,
+            () => SettingsControls.DrawToggle(configuration, () => configuration.AutoResumeOnFault, value => configuration.AutoResumeOnFault = value, "##ahg_general_autoresume"),
+            SettingsRow.ToggleHeight);
     }
 }

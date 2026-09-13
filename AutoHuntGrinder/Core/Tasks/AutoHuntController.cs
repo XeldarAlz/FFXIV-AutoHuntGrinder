@@ -46,8 +46,9 @@ internal sealed partial class AutoHuntController
 
         activeBills = [.. bills];
         PauseReason = PauseReason.None;
-        session = new AutoHuntSession { JobAbbreviation = CurrentJobAbbreviation() };
-        Diag($"Run starting: {activeBills.Length} bill(s).");
+        ResetFaultBudget();
+        session = new AutoHuntSession(activeBills);
+        Diag($"Run starting: {activeBills.Length} bill(s), job {session.JobAbbreviation}.");
         StartHunt(session);
     }
 
@@ -70,7 +71,7 @@ internal sealed partial class AutoHuntController
     private void StartHunt(AutoHuntSession owningSession)
     {
         Phase = HuntPhase.Reading;
-        RunTask(new AutoHunt(activeBills), () => EndRun(owningSession));
+        RunTask(new AutoHunt(activeBills), () => OnHuntEnded(owningSession));
     }
 
     private void RunTask(AutoCommon task, Action onCompleted)
@@ -88,9 +89,6 @@ internal sealed partial class AutoHuntController
             onCompleted();
         });
     }
-
-    private static string CurrentJobAbbreviation()
-        => ECommons.DalamudServices.Svc.Objects.LocalPlayer?.ClassJob.ValueNullable?.Abbreviation.ExtractText() ?? string.Empty;
 }
 
 internal enum HuntPhase { Idle, Reading, PickingUp, Travelling, Searching, Fighting, Finishing, Paused }
