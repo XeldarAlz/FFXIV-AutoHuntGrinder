@@ -1,6 +1,7 @@
 using AutoHuntGrinder.Core;
 using AutoHuntGrinder.Core.Debug;
 using AutoHuntGrinder.Core.Game.Watchers;
+using AutoHuntGrinder.Core.Kills;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Core.Stats;
 using AutoHuntGrinder.Core.Tasks;
@@ -33,6 +34,8 @@ public sealed class Plugin : IDalamudPlugin
 
     internal static Plugin Instance { get; private set; } = null!;
 
+    internal static KillLedger Kills { get; private set; } = null!;
+
     internal Configuration Configuration { get; }
     internal WindowSystem WindowSystem { get; } = new("AutoHuntGrinder");
     internal RunHistory History { get; }
@@ -59,6 +62,7 @@ public sealed class Plugin : IDalamudPlugin
         dutyWatcher = new DutyWatcher();
         gmAlertWatcher = new GmAlertWatcher();
         partyInviteWatcher = new PartyInviteWatcher();
+        Kills = new KillLedger();
 
         InitializeLocalization();
         Fonts.Initialize(PluginInterface.UiBuilder, PluginDirectory);
@@ -106,6 +110,7 @@ public sealed class Plugin : IDalamudPlugin
         dutyWatcher.Dispose();
         gmAlertWatcher.Dispose();
         partyInviteWatcher.Dispose();
+        Kills.Dispose();
 
         CLibMain.Dispose();
         ECommonsMain.Dispose();
