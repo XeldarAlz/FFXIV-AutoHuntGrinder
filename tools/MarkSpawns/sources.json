@@ -1,0 +1,23 @@
+{
+  "localRoot": "claude/C--Development-FFXIV/85d3d192-bf9e-4caa-bc14-238d36ba8888/scratchpad",
+  "landingPoints": {
+    "url": "https://raw.githubusercontent.com/nt153133/__LlamaLibrary/aadcf65fd8315e9ba56e97cfe32336302c1f0a27/Resources/AllHunts.json",
+    "localPath": "others/llama_AllHunts.json"
+  },
+  "spawnReports": {
+    "url": "https://raw.githubusercontent.com/ffxiv-teamcraft/ffxiv-teamcraft/46dde90c0b070fb13197977fb01fdf288fd56aec/libs/data/src/lib/json/monsters.json",
+    "localPath": "others/tc_monsters.json"
+  },
+  "sheets": {
+    "url": "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/a67c23b00fe8cb254855d06b59845958b55d28f3/csv/en",
+    "localPath": "gamedata/csv",
+    "names": [
+      "MobHuntOrderType",
+      "MobHuntOrder",
+      "MobHuntTarget",
+      "Map",
+      "TerritoryType",
+      "BNpcName"
+    ]
+  }
+}
