@@ -39,6 +39,8 @@ public sealed class Plugin : IDalamudPlugin
     internal AutoHuntController Controller { get; }
 
     private readonly DutyWatcher dutyWatcher;
+    private readonly GmAlertWatcher gmAlertWatcher;
+    private readonly PartyInviteWatcher partyInviteWatcher;
     private readonly AppWindow appWindow;
     private readonly CommandInfo primaryCommand;
     private readonly CommandInfo aliasCommand;
@@ -55,6 +57,8 @@ public sealed class Plugin : IDalamudPlugin
         History = new RunHistory();
         Controller = new AutoHuntController();
         dutyWatcher = new DutyWatcher();
+        gmAlertWatcher = new GmAlertWatcher();
+        partyInviteWatcher = new PartyInviteWatcher();
 
         InitializeLocalization();
         Fonts.Initialize(PluginInterface.UiBuilder, PluginDirectory);
@@ -96,6 +100,8 @@ public sealed class Plugin : IDalamudPlugin
         CommandManager.RemoveHandler(AhgConstants.AliasCommand);
 
         dutyWatcher.Dispose();
+        gmAlertWatcher.Dispose();
+        partyInviteWatcher.Dispose();
 
         CLibMain.Dispose();
         ECommonsMain.Dispose();

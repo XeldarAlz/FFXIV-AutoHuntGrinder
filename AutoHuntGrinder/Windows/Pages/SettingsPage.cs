@@ -11,13 +11,19 @@ namespace AutoHuntGrinder.Windows.Pages;
 
 internal sealed class SettingsPage
 {
-    private enum Tab { General }
+    private enum Tab { General, Repair, Consumables, Humanizer, PartyInvites, GmAlert }
 
     private readonly record struct Entry(Tab Tab, LocString Label, FontAwesomeIcon Icon, LocString Subtitle);
 
+    // Ordered like Tab, because the active tab indexes this array.
     private static readonly Entry[] entries =
     [
         new(Tab.General, L.Settings.CatGeneral, FontAwesomeIcon.Cog, L.Settings.CatGeneralSub),
+        new(Tab.Repair, L.Safety.CatRepair, FontAwesomeIcon.Wrench, L.Safety.CatRepairSub),
+        new(Tab.Consumables, L.Safety.CatConsumables, FontAwesomeIcon.Utensils, L.Safety.CatConsumablesSub),
+        new(Tab.Humanizer, L.Safety.CatHumanizer, FontAwesomeIcon.Walking, L.Safety.CatHumanizerSub),
+        new(Tab.PartyInvites, L.Safety.CatPartyInvites, FontAwesomeIcon.UserSlash, L.Safety.CatPartyInvitesSub),
+        new(Tab.GmAlert, L.Safety.CatGmAlert, FontAwesomeIcon.UserSecret, L.Safety.CatGmAlertSub),
     ];
 
     private Tab activeTab = Tab.General;
@@ -103,6 +109,21 @@ internal sealed class SettingsPage
         {
             case Tab.General:
                 GeneralSettings.Draw(configuration);
+                break;
+            case Tab.Repair:
+                RepairSettings.Draw(configuration);
+                break;
+            case Tab.Consumables:
+                ConsumableSettings.Draw(configuration);
+                break;
+            case Tab.Humanizer:
+                HumanizerSettings.Draw(configuration);
+                break;
+            case Tab.PartyInvites:
+                PartyInviteSettings.Draw(configuration);
+                break;
+            case Tab.GmAlert:
+                GmAlertSettings.Draw(configuration);
                 break;
         }
     }
