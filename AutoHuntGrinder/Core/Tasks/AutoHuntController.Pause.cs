@@ -40,13 +40,16 @@ internal sealed partial class AutoHuntController
             return;
         }
 
+        var pausing = session!;
         PauseReason = reason;
         Phase = HuntPhase.Paused;
-        session!.BeginPause();
+        // Resume re-baselines the session, so progress up to this moment has to be credited now.
+        pausing.Sample();
+        pausing.BeginPause();
         currentTask = null;
         Svc.Automation.Stop();
 
-        Diag($"Run paused ({reason}); session kept.");
+        Diag($"Run paused ({reason}); session kept at {pausing.MarksKilled} marks, {pausing.BillsCompleted} bills.");
         ECommons.DalamudServices.Svc.Chat.Print(reason == PauseReason.InContent
             ? $"{AhgConstants.LogPrefix} Paused: you are in instanced content. The hunt resumes once you are back outside."
             : $"{AhgConstants.LogPrefix} Paused. Your bills and session stats are kept until you resume or stop.");
@@ -69,6 +72,7 @@ internal sealed partial class AutoHuntController
 
         PauseReason = PauseReason.None;
         resuming.EndPause();
+        resuming.Rebaseline();
         Diag("Resuming the hunt.");
         ECommons.DalamudServices.Svc.Chat.Print($"{AhgConstants.LogPrefix} Resuming the hunt.");
         StartHunt(resuming);
