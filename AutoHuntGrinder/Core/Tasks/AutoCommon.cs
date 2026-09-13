@@ -65,7 +65,7 @@ public abstract partial class AutoCommon : TaskBase
             await NextFrame(checkFrames);
         }
 
-        Diag($"WAIT TIMEOUT: '{scope}' not satisfied within {timeoutMs / 1000}s");
+        Diag($"WAIT TIMEOUT: '{scope}' not satisfied within {timeoutMs / TimeUnits.MillisecondsPerSecond}s");
         return false;
     }
 
@@ -88,7 +88,7 @@ public abstract partial class AutoCommon : TaskBase
 
             if (Environment.TickCount64 >= deadline)
             {
-                Diag($"WAIT TIMEOUT: navmesh not ready within {timeoutMs / 1000}s; proceeding anyway");
+                Diag($"WAIT TIMEOUT: navmesh not ready within {timeoutMs / TimeUnits.MillisecondsPerSecond}s; proceeding anyway");
                 return;
             }
 

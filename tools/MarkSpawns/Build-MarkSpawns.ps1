@@ -1,10 +1,12 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory)]
     [string] $LandingPointsPath,
+    [Parameter(Mandatory)]
     [string] $SpawnReportsPath,
+    [Parameter(Mandatory)]
     [string] $SheetDirectory,
-    [switch] $Download,
     [string] $OutputPath = (Join-Path $PSScriptRoot '../../AutoHuntGrinder/Core/Hunts/Data/MarkSpawnTable.g.cs'),
     [double] $DuplicateRadius = 15.0,
     [ValidateRange(1, 255)]
@@ -15,17 +17,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $invariant = [Globalization.CultureInfo]::InvariantCulture
-$sources = Get-Content -Raw -Path (Join-Path $PSScriptRoot 'sources.json') | ConvertFrom-Json
-$temporaryRoot = [IO.Path]::GetTempPath()
 $expansionNames = @('ARR', 'HW', 'SB', 'ShB', 'EW', 'DT')
 # A landing point and a spawn report this close are taken as the same spot when fitting the map to world conversion.
 $sameSpotRadius = 30.0
-
-function Save-Source([string] $url, [string] $path) {
-    Write-Host "Downloading $url"
-    Invoke-WebRequest -Uri $url -OutFile $path
-    return $path
-}
 
 # Import-Csv reads a first line starting with '#' as a comment, so the sheet header is passed in explicitly.
 function Read-SheetRows([string] $name) {
@@ -217,33 +211,9 @@ function Assert-Fits([int] $value, [int] $maximum, [string] $what) {
     }
 }
 
-if ($Download) {
-    $cache = Join-Path $temporaryRoot 'AutoHuntGrinder-MarkSpawns'
-    $SheetDirectory = Join-Path $cache 'sheets'
-    New-Item -ItemType Directory -Force -Path $SheetDirectory | Out-Null
-    $LandingPointsPath = Save-Source $sources.landingPoints.url (Join-Path $cache 'AllHunts.json')
-    $SpawnReportsPath = Save-Source $sources.spawnReports.url (Join-Path $cache 'monsters.json')
-    foreach ($name in $sources.sheets.names) {
-        Save-Source "$($sources.sheets.url)/$name.csv" (Join-Path $SheetDirectory "$name.csv") | Out-Null
-    }
-}
-
-$localRoot = Join-Path $temporaryRoot $sources.localRoot
-if (-not $LandingPointsPath) {
-    $LandingPointsPath = Join-Path $localRoot $sources.landingPoints.localPath
-}
-
-if (-not $SpawnReportsPath) {
-    $SpawnReportsPath = Join-Path $localRoot $sources.spawnReports.localPath
-}
-
-if (-not $SheetDirectory) {
-    $SheetDirectory = Join-Path $localRoot $sources.sheets.localPath
-}
-
 foreach ($inputPath in @($LandingPointsPath, $SpawnReportsPath, $SheetDirectory)) {
     if (-not (Test-Path $inputPath)) {
-        throw "Input not found: $inputPath. Run with -Download to fetch the pinned sources."
+        throw "Input not found: $inputPath. THIRD-PARTY-NOTICES.md pins the two spawn datasets; the sheet directory holds the game's sheets exported as CSV."
     }
 }
 

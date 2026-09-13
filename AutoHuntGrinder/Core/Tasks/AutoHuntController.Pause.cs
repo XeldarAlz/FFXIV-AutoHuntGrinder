@@ -48,6 +48,7 @@ internal sealed partial class AutoHuntController
         pausing.BeginPause();
         currentTask = null;
         Svc.Automation.Stop();
+        ReleaseHelpers();
 
         Diag($"Run paused ({reason}); session kept at {pausing.MarksKilled} marks, {pausing.BillsCompleted} bills.");
         ECommons.DalamudServices.Svc.Chat.Print(reason == PauseReason.InContent

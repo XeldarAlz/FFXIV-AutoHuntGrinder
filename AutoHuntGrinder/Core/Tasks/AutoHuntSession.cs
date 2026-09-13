@@ -14,6 +14,7 @@ public sealed class AutoHuntSession
 
     private long pausedMs;
     private long pauseStartedAtMs;
+    private DateTime? endedAt;
 
     public AutoHuntSession(IReadOnlyList<HuntBill> bills)
     {
@@ -52,12 +53,17 @@ public sealed class AutoHuntSession
     internal bool Recorded;
     internal bool AfterActionDispatched;
 
+    // Run-scoped rather than kept on the hunt task, because every Resume and fault restart builds a new task.
+    internal HashSet<uint> GivenUpNameIds { get; } = [];
+    internal bool UnhuntableReported;
+    internal int HuntPassesCompleted;
+
     public bool DidNothing
         => MarksKilled == 0 && BillsCompleted == 0 && AlliedSeals == 0 && CenturioSeals == 0 && Nuts == 0;
 
     public int Seals => AlliedSeals + CenturioSeals;
 
-    public TimeSpan Elapsed => DateTime.UtcNow - StartedAt - TimeSpan.FromMilliseconds(PausedTotalMs);
+    public TimeSpan Elapsed => (endedAt ?? DateTime.UtcNow) - StartedAt - TimeSpan.FromMilliseconds(PausedTotalMs);
 
     public double MarksPerHour => Elapsed.TotalHours > 0 ? MarksKilled / Elapsed.TotalHours : 0;
 
@@ -123,6 +129,18 @@ public sealed class AutoHuntSession
 
         pausedMs += Environment.TickCount64 - pauseStartedAtMs;
         pauseStartedAtMs = 0;
+    }
+
+    // Freezes the clock, so a finished run left on screen during its after-run action stops counting.
+    internal void End()
+    {
+        if (endedAt is not null)
+        {
+            return;
+        }
+
+        EndPause();
+        endedAt = DateTime.UtcNow;
     }
 
     private void SampleBill(ref BillLedger ledger, bool credit)

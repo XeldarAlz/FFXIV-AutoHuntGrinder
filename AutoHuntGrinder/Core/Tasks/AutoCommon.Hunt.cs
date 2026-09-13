@@ -54,8 +54,6 @@ public abstract partial class AutoCommon
     {
     }
 
-    // Travels to the mark's territory, sweeps its spawn points nearest first (or waits out its FATE), fights every copy it
-    // finds and returns once the bill shows the target done, the budget runs out, or the knockout cap is reached.
     protected async Task<MarkOutcome> HuntMark(HuntBill bill, HuntTarget target)
     {
         Diag($"Hunt: {target.Name} for {bill.Name} at {target.Killed}/{target.Needed} (target row {target.TargetRowId}, name {target.NameId}, territory {target.TerritoryId}, {ConditionTag()})");
@@ -78,7 +76,7 @@ public abstract partial class AutoCommon
             return MarkOutcome.CombatUnavailable;
         }
 
-        var hunt = CreateMarkHunt(bill, target);
+        var hunt = CreateMarkHunt(bill, target, progress.Status);
         if (hunt is null)
         {
             Warn($"Hunt: no spawn points and no FATE are known for {target.Name} in {target.ZoneName}; skipping it");
@@ -97,8 +95,8 @@ public abstract partial class AutoCommon
         {
             BossModIPC.Instance.ClearActive();
             MarkPhase = HuntPhase.Idle;
-            var final = ReadMarkProgress(bill, target, force: true);
-            Diag($"Hunt: {target.Name} ended {outcome} at {final.Killed}/{final.Needed} after {(Environment.TickCount64 - startedAt) / 1000}s");
+            var final = ReadMarkProgress(hunt, force: true);
+            Diag($"Hunt: {target.Name} ended {outcome} at {final.Killed}/{final.Needed} after {(Environment.TickCount64 - startedAt) / TimeUnits.MillisecondsPerSecond}s");
         }
     }
 
@@ -134,7 +132,7 @@ public abstract partial class AutoCommon
         }
     }
 
-    private static MarkHuntContext? CreateMarkHunt(HuntBill bill, HuntTarget target)
+    private static MarkHuntContext? CreateMarkHunt(HuntBill bill, HuntTarget target, BillStatus startStatus)
     {
         var hasFate = MarkFates.TryGet(target.TargetRowId, out var fate);
         var hasSpawns = MarkSpawns.TryGet(target.TargetRowId, out var spawnTerritoryId, out var points);
@@ -143,7 +141,7 @@ public abstract partial class AutoCommon
             return null;
         }
 
-        return new MarkHuntContext(bill, target, hasSpawns ? spawnTerritoryId : target.TerritoryId, fate, points.ToArray());
+        return new MarkHuntContext(bill, target, startStatus, hasSpawns ? spawnTerritoryId : target.TerritoryId, fate, points.ToArray());
     }
 
     private async Task<MarkOutcome> SearchForMark(MarkHuntContext hunt)
@@ -182,15 +180,13 @@ public abstract partial class AutoCommon
                 return MarkOutcome.Unreachable;
             }
 
-            var progress = ReadMarkProgress(hunt.Bill, hunt.Target, force: true);
+            var progress = ReadMarkProgress(hunt, force: true);
             Diag($"Hunt: lap {lap}/{laps} over {hunt.Target.Name}'s {points.Length} spawn point(s) done at {progress.Killed}/{progress.Needed}");
         }
 
         return MarkOutcome.NotFound;
     }
 
-    // Fights whatever is in view, then heads for the point; a sighting on the way stops the leg, the fight runs, and the
-    // leg resumes. Null means move on to the next point.
     private async Task<MarkOutcome?> SearchMarkPoint(MarkHuntContext hunt, Vector3 point, string scope)
     {
         for (var sighting = 0; sighting <= MaxMarkSightingsPerPoint; sighting++)
@@ -229,8 +225,8 @@ public abstract partial class AutoCommon
         return null;
     }
 
-    // One direct leg that stops the moment a copy of the mark comes into view; a leg that stalls falls back to the full
-    // travel routine and its recovery ladder, which cannot stop early but always makes progress.
+    // Only the direct leg can stop at a sighting. Full travel cannot, so it takes over only once the leg stalls, for its
+    // recovery ladder that always makes progress.
     private async Task<MarkLeg> SweepToMarkPoint(MarkHuntContext hunt, Vector3 point, string scope)
     {
         if (WithinReach(point, MarkSweepArriveMeters))
@@ -240,7 +236,6 @@ public abstract partial class AutoCommon
 
         MarkPhase = HuntPhase.Searching;
         var ride = TerritoryAllowsMount(hunt.TerritoryId) && FreeToMount() && (Svc.Condition[ConditionFlag.Mounted] || DistanceTo(point) > MountMinMeters);
-        var config = (ride ? rideConfig : walkConfig).WithTolerance(MarkSweepArriveMeters);
         var sighted = false;
         var nextScanAt = 0L;
 
@@ -264,7 +259,7 @@ public abstract partial class AutoCommon
         }
 
         Diag($"{scope}: {(ride ? "riding" : "walking")} {DistanceTo(point):F0}m to {FormatPosition(point)}");
-        var operation = new MoveOp(move => move.MoveInZone(point, config, StopCondition));
+        var operation = new MoveOp(move => move.MoveInZone(point, MovementFor(ride, MarkSweepArriveMeters), StopCondition));
         await RunCancellable(operation, TravelBudgetMs(point), scope, StuckDetector.MoveStallAbort(scope));
         if (sighted)
         {
@@ -427,7 +422,7 @@ public abstract partial class AutoCommon
             return MarkOutcome.Died;
         }
 
-        var progress = ReadMarkProgress(hunt.Bill, hunt.Target, force: false);
+        var progress = ReadMarkProgress(hunt, force: false);
         if (progress.Done)
         {
             return MarkOutcome.Killed;
@@ -451,19 +446,21 @@ public abstract partial class AutoCommon
     {
         MarkBillReader.Refresh(force);
         var status = MarkBillReader.Status(bill.MarkIndex);
-        var targets = MarkBillReader.Targets(bill.MarkIndex);
-        for (var targetIndex = 0; targetIndex < targets.Length; targetIndex++)
-        {
-            if (targets[targetIndex].TargetRowId == target.TargetRowId)
-            {
-                return new MarkProgress(status, true, targets[targetIndex].Killed, targets[targetIndex].Needed);
-            }
-        }
-
-        return new MarkProgress(status, false, 0, target.Needed);
+        return MarkBillReader.TryFindTarget(bill.MarkIndex, target.TargetRowId, out var listed)
+            ? new MarkProgress(status, true, listed.Killed, listed.Needed)
+            : new MarkProgress(status, false, 0, target.Needed);
     }
 
-    private static bool SightMark(MarkHuntContext hunt, out MarkSighting sighting)
+    // A held bill leaves the held set when its last mark falls. One held from an earlier reset then reads as posted again,
+    // with no marks listed, so that flip is the kill that finished it.
+    private static MarkProgress ReadMarkProgress(MarkHuntContext hunt, bool force)
+    {
+        var progress = ReadMarkProgress(hunt.Bill, hunt.Target, force);
+        var finished = hunt.StartStatus is BillStatus.Held or BillStatus.Stale && progress.Status == BillStatus.Available;
+        return finished ? new MarkProgress(BillStatus.Done, false, hunt.Target.Needed, hunt.Target.Needed) : progress;
+    }
+
+    private bool SightMark(MarkHuntContext hunt, out MarkSighting sighting)
     {
         if (Svc.Objects.LocalPlayer is not { } player)
         {
@@ -471,10 +468,17 @@ public abstract partial class AutoCommon
             return false;
         }
 
-        return MarkFinder.TryFindNearest(hunt.Target.NameId, hunt.FateId, player.Position, hunt.Ignored, out sighting);
+        var found = MarkFinder.TryFindNearest(hunt.Target.NameId, hunt.FateId, hunt.HonorsClaims, player.Position, hunt.Ignored, out sighting, out var claimed);
+        if (claimed > 0 && !hunt.ClaimSkipLogged)
+        {
+            hunt.ClaimSkipLogged = true;
+            Diag($"Hunt: passing over {claimed} {hunt.Target.Name} another player's party has claimed; kills on them would not count");
+        }
+
+        return found;
     }
 
-    private static bool IsMarkKnockedOut() => Svc.Condition[ConditionFlag.Unconscious];
+    private protected static bool IsMarkKnockedOut() => Svc.Condition[ConditionFlag.Unconscious];
 
     // Done also covers a bill that completed with this kill, since the game may clear its counts when it does.
     private readonly record struct MarkProgress(BillStatus Status, bool Listed, int Killed, int Needed)
@@ -493,10 +497,11 @@ public abstract partial class AutoCommon
         private int ignoredCount;
         private int ignoredNext;
 
-        public MarkHuntContext(HuntBill bill, HuntTarget target, uint territoryId, MarkFate fate, Vector3[] spawnPoints)
+        public MarkHuntContext(HuntBill bill, HuntTarget target, BillStatus startStatus, uint territoryId, MarkFate fate, Vector3[] spawnPoints)
         {
             Bill = bill;
             Target = target;
+            StartStatus = startStatus;
             TerritoryId = territoryId;
             Fate = fate;
             SpawnPoints = spawnPoints;
@@ -510,6 +515,8 @@ public abstract partial class AutoCommon
 
         public HuntTarget Target { get; }
 
+        public BillStatus StartStatus { get; }
+
         public uint TerritoryId { get; }
 
         public MarkFate Fate { get; }
@@ -521,6 +528,12 @@ public abstract partial class AutoCommon
         public Vector3[]? ResolvedPoints { get; set; }
 
         public bool Elite => Bill.Cadence == BillCadence.Weekly;
+
+        // FATE mobs and hunt Notorious Monsters, which every elite mark is, credit everyone who fights them; only an
+        // ordinary mob belongs to the party that pulled it.
+        public bool HonorsClaims => FateId == 0 && !Elite;
+
+        public bool ClaimSkipLogged { get; set; }
 
         public string ZoneName { get; }
 

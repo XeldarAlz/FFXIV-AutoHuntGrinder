@@ -27,16 +27,12 @@ internal sealed class MoveOp(Func<MoveOp, Task> body) : TaskBase
         }
     }
 
-    public Task Move(uint territoryId, Vector3 destination, MovementConfig config, bool allowTeleportIfFaster, Func<bool>? stopCondition, bool allowAethernetWithinTerritory)
-        => MoveTo(territoryId, destination, config, allowTeleportIfFaster, stopCondition, null, allowAethernetWithinTerritory);
-
     public Task MoveInZone(Vector3 destination, MovementConfig config, Func<bool>? stopCondition)
         => MoveTo(destination, config, allowTeleportIfFaster: false, stopCondition, null, allowAethernet: false);
 
     public Task Teleport(uint territoryId, Vector3 destination, bool allowSameZoneTeleport)
         => TeleportTo(territoryId, destination, allowSameZoneTeleport);
 
-    // Rides the local aethernet from the shard nearest the character to the one nearest the destination.
     public Task Aethernet(uint territoryId, Vector3 destination)
         => UseAethernet(territoryId, destination);
 

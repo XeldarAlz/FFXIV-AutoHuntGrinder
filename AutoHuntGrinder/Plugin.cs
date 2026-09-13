@@ -70,10 +70,11 @@ public sealed class Plugin : IDalamudPlugin
         CommandManager.AddHandler(AhgConstants.PrimaryCommand, primaryCommand);
         CommandManager.AddHandler(AhgConstants.AliasCommand, aliasCommand);
 
-        PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
+        PluginInterface.UiBuilder.Draw += OnDraw;
         PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigUi;
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
 
+        Svc.Framework.Update += OnFrameworkUpdate;
         Svc.ClientState.Login += OnLogin;
         if (Svc.ClientState.IsLoggedIn)
         {
@@ -85,12 +86,15 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        Controller.Stop();
         TaskScheduler.UnobservedTaskException -= OnUnobservedTaskException;
 
-        PluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
+        PluginInterface.UiBuilder.Draw -= OnDraw;
         PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfigUi;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
+        Svc.Framework.Update -= OnFrameworkUpdate;
         Svc.ClientState.Login -= OnLogin;
+        Configuration.SaveIfPending();
 
         WindowSystem.RemoveAllWindows();
         appWindow.Dispose();
@@ -159,6 +163,14 @@ public sealed class Plugin : IDalamudPlugin
             ToggleMainUi();
         }
     }
+
+    private void OnDraw()
+    {
+        WindowSystem.Draw();
+        Configuration.FlushPendingSave();
+    }
+
+    private void OnFrameworkUpdate(IFramework framework) => Controller.Tick();
 
     private static bool IsGotoCommand(string arguments)
         => arguments.StartsWith(GotoSubcommand, StringComparison.OrdinalIgnoreCase)

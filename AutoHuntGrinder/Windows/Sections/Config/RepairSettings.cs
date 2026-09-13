@@ -11,8 +11,8 @@ namespace AutoHuntGrinder.Windows.Sections.Config;
 
 internal static class RepairSettings
 {
-    private const int ThresholdMinPct = 5;
-    private const int ThresholdMaxPct = 80;
+    private const int ThresholdMinPercent = 5;
+    private const int ThresholdMaxPercent = 80;
     private const string ThresholdFormat = "%d%%";
     private const string CustomNpcScope = "##ahg_repair_npc";
 
@@ -62,8 +62,8 @@ internal static class RepairSettings
             Loc.T(L.Safety.RepairThresholdHelp),
             SettingsControls.RowSliderWidth,
             () => SettingsControls.DrawIntSlider(configuration, "##ahg_repair_threshold",
-                () => configuration.AutoRepairThresholdPct, value => configuration.AutoRepairThresholdPct = value,
-                ThresholdMinPct, ThresholdMaxPct, ThresholdFormat));
+                () => configuration.AutoRepairThresholdPercent, value => configuration.AutoRepairThresholdPercent = value,
+                ThresholdMinPercent, ThresholdMaxPercent, ThresholdFormat));
     }
 
     private static void DrawSourceGroup(Configuration configuration)

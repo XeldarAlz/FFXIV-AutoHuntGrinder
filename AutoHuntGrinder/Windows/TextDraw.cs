@@ -11,6 +11,13 @@ internal static class TextDraw
     public const string Separator = "  ·  ";
 
     private const string Ellipsis = "…";
+    private const int TruncateCacheSize = 16;
+
+    private static readonly TruncatedText[] truncateCache = new TruncatedText[TruncateCacheSize];
+
+    private static int truncateCacheNext;
+
+    private readonly record struct TruncatedText(string Source, float MaxWidth, float FontSize, string Result);
 
     public static string Upper(string text) => Loc.Upper(text);
 
@@ -68,6 +75,8 @@ internal static class TextDraw
         }
     }
 
+    // A line that overflows its slot overflows on every frame it is drawn, so its cut is cached, and prefixes are measured
+    // in place, so finding the cut allocates only the result.
     public static string Truncate(string text, float maxWidth)
     {
         if (string.IsNullOrEmpty(text) || maxWidth <= 0f)
@@ -80,6 +89,24 @@ internal static class TextDraw
             return text;
         }
 
+        var fontSize = ImGui.GetFontSize();
+        for (var index = 0; index < truncateCache.Length; index++)
+        {
+            var cached = truncateCache[index];
+            if (ReferenceEquals(cached.Source, text) && cached.MaxWidth == maxWidth && cached.FontSize == fontSize)
+            {
+                return cached.Result;
+            }
+        }
+
+        var result = Cut(text, maxWidth);
+        truncateCache[truncateCacheNext] = new TruncatedText(text, maxWidth, fontSize, result);
+        truncateCacheNext = (truncateCacheNext + 1) % TruncateCacheSize;
+        return result;
+    }
+
+    private static string Cut(string text, float maxWidth)
+    {
         var budget = maxWidth - Measure(Ellipsis).X;
         if (budget <= 0f)
         {
@@ -90,15 +117,20 @@ internal static class TextDraw
         var high = text.Length - 1;
         while (low < high)
         {
-            var mid = (low + high + 1) / 2;
-            if (Measure(text[..mid]).X <= budget) low = mid;
-            else high = mid - 1;
+            var middle = (low + high + 1) / 2;
+            if (ImGui.CalcTextSize(text.AsSpan(0, middle)).X <= budget)
+            {
+                low = middle;
+            }
+            else
+            {
+                high = middle - 1;
+            }
         }
 
-        return text[..low] + Ellipsis;
+        return string.Concat(text.AsSpan(0, low), Ellipsis);
     }
 
-    // Continues a line already drawn up to x: the separator, then as much of the text as fits before rightX.
     public static void Trailing(string text, float x, float rightX, float y, Vector4 color)
     {
         var separatorWidth = Measure(Separator).X;

@@ -38,9 +38,9 @@ internal static partial class L
         public static readonly LocString CustomNpcHelp = new("safety.repair.customNpcHelp", "Optional. Travel to any repair NPC instead of the Grand Company mender. Target the NPC in-game, then click \"Set from target\". Clear to fall back to the GC mender.");
         public static readonly LocString NpcNote = new("safety.repair.npcNote", "NPC repair uses your custom repair NPC if set, otherwise your Grand Company mender, teleporting there when needed. A custom NPC removes the Grand Company requirement.");
         public static readonly LocString NpcSet = new("safety.repair.npcSet", "{0}  ({1})");
-        public static readonly LocString NpcNone = new("safety.repair.npcNone", "None - using Grand Company mender.");
+        public static readonly LocString NpcNone = new("safety.repair.npcNone", "None: the Grand Company mender is used.");
         public static readonly LocString SetFromTarget = new("safety.repair.setFromTarget", "Set from target");
-        public static readonly LocString NoTargetChat = new("safety.repair.noTargetChat", "No target - target a repair NPC first, then click again.");
+        public static readonly LocString NoTargetChat = new("safety.repair.noTargetChat", "No target. Target a repair NPC first, then click again.");
         public static readonly LocString NpcSetChat = new("safety.repair.npcSetChat", "Custom repair NPC set: {0} ({1}).");
 
         public static readonly LocString ConsumablesGroup = new("safety.consumables.group", "Consumables");
@@ -62,7 +62,7 @@ internal static partial class L
         public static readonly LocString Added = new("safety.consumables.added", "(added)");
         public static readonly LocString ItemLabel = new("safety.consumables.itemLabel", "{0}  [{1}]{2}");
         public static readonly LocString AlreadyAdded = new("safety.consumables.alreadyAdded", "Already added.");
-        public static readonly LocString NoItemsAdded = new("safety.consumables.noItemsAdded", "No items added - nothing will be consumed.");
+        public static readonly LocString NoItemsAdded = new("safety.consumables.noItemsAdded", "No items added, so nothing will be consumed.");
         public static readonly LocString WellFed = new("safety.consumables.wellFed", "Well Fed");
         public static readonly LocString Medicated = new("safety.consumables.medicated", "Medicated");
         public static readonly LocString NoneInBagShort = new("safety.consumables.noneInBagShort", "{0}, none in bag");
@@ -87,7 +87,7 @@ internal static partial class L
         public static readonly LocString HumanizerCities = new("safety.humanizer.cities", "Cities");
         public static readonly LocString AllowedCities = new("safety.humanizer.allowedCities", "Allowed cities");
         public static readonly LocString AllowedCitiesHelp = new("safety.humanizer.allowedCitiesHelp", "Tick the cities the plugin is allowed to teleport to. One is picked at random each break. Untick cities you haven't unlocked or don't want visited.");
-        public static readonly LocString NoCities = new("safety.humanizer.noCities", "No cities selected - Humanizer will skip the break and keep hunting.");
+        public static readonly LocString NoCities = new("safety.humanizer.noCities", "No cities selected, so the Humanizer skips the break and keeps hunting.");
 
         public static readonly LocString InvitesDecline = new("safety.invites.decline", "Decline");
         public static readonly LocString AutoDecline = new("safety.invites.autoDecline", "Auto-decline party invites");

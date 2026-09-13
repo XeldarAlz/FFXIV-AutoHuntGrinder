@@ -16,10 +16,10 @@ using AddonSheet = Lumina.Excel.Sheets.Addon;
 
 namespace AutoHuntGrinder.Core.Game.Watchers;
 
-// Declines player party invites while a hunt runs. The game asks "Join X's party?" and, once No is pressed, "Decline X's
-// party invite?", which must be answered Yes. Both prompts are matched against their Addon sheet templates, so the check
-// works in every client language and never depends on the agent's addon-id bookkeeping. Each click waits a human
-// reaction time, and the addon is looked up again by id right before it is clicked.
+// The game asks "Join X's party?" and, once No is pressed, "Decline X's party invite?", which must be answered Yes.
+// Both prompts are matched against their Addon sheet templates, so the check works in every client language and never
+// depends on the agent's addon-id bookkeeping. Each click waits a human reaction time, and the addon is looked up again
+// by id right before it is clicked.
 internal sealed unsafe class PartyInviteWatcher : IDisposable
 {
     private enum Stage : byte
@@ -36,7 +36,6 @@ internal sealed unsafe class PartyInviteWatcher : IDisposable
     private const int ConfirmDelayMaxMs = 900;
     private const int ConfirmWaitMs = 4_000;
     private const int NotReadyAbandonMs = 15_000;
-    private const int MillisecondsPerSecond = 1_000;
 
     private PromptTemplate joinPrompt = PromptTemplate.Invalid;
     private PromptTemplate declinePrompt = PromptTemplate.Invalid;
@@ -111,15 +110,15 @@ internal sealed unsafe class PartyInviteWatcher : IDisposable
         CaptureInviter();
 
         var configuration = Plugin.Instance.Configuration;
-        var lowSeconds = Math.Max(0, configuration.DeclineInviteDelayMinSec);
-        var highSeconds = Math.Max(lowSeconds, configuration.DeclineInviteDelayMaxSec);
-        var delayMs = Random.Shared.Next(lowSeconds, highSeconds + 1) * MillisecondsPerSecond;
+        var lowSeconds = Math.Max(0, configuration.DeclineInviteDelayMinSeconds);
+        var highSeconds = Math.Max(lowSeconds, configuration.DeclineInviteDelayMaxSeconds);
+        var delayMs = Random.Shared.Next(lowSeconds, highSeconds + 1) * TimeUnits.MillisecondsPerSecond;
 
         stage = Stage.DeclinePending;
         inviteAddonId = addon->Id;
         confirmAddonId = 0;
         actAtTick = Environment.TickCount64 + delayMs;
-        Svc.Log.Info($"{AhgConstants.LogPrefix} Party invite from {DisplayName()} detected; declining in ~{delayMs / MillisecondsPerSecond}s.");
+        Svc.Log.Info($"{AhgConstants.LogPrefix} Party invite from {DisplayName()} detected; declining in ~{delayMs / TimeUnits.MillisecondsPerSecond}s.");
     }
 
     private void ArmConfirm(AtkUnitBase* addon)

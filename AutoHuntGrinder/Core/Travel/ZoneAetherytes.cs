@@ -8,7 +8,6 @@ namespace AutoHuntGrinder.Core.Travel;
 
 internal readonly record struct ZoneAetheryte(uint Id, string Name, Vector3 Position);
 
-// The attunable aetheryte in another territory that leads into one owning none of its own.
 internal readonly record struct ZoneGateway(uint AetheryteId, uint TerritoryId, string Name, Vector3 Position);
 
 internal readonly record struct AethernetShortcut(ZoneAetheryte Source, ZoneAetheryte Destination, float SavedMeters);
@@ -24,7 +23,10 @@ internal static class ZoneAetherytes
     private static readonly Dictionary<uint, uint[]> attunableIdsByTerritory = new();
     private static readonly Dictionary<uint, ZoneGateway?> gatewayByTerritory = new();
     private static readonly Dictionary<uint, AethernetNode[]> aethernetByTerritory = new();
-    private static Dictionary<byte, uint>? primaryByGroup;
+    private static AetheryteIndex? sheetIndex;
+
+    // One pass over the sheet serves every territory, where a scan per territory would read the whole sheet each time.
+    private static AetheryteIndex SheetIndex => sheetIndex ??= BuildSheetIndex();
 
     // Unattuned aetherytes are skipped: a teleport to one is refused.
     public static bool TryFindNearest(uint territoryId, Vector3 target, out ZoneAetheryte nearest)
@@ -253,15 +255,14 @@ internal static class ZoneAetherytes
 
     private static uint[] ResolveAttunableIds(uint territoryId)
     {
-        var found = new List<uint>(4);
-        foreach (var row in Svc.Data.GetExcelSheet<Aetheryte>())
+        var rows = RowsIn(territoryId);
+        var found = new List<uint>(rows.Length);
+        for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
         {
-            if (!row.IsAetheryte || row.Territory.RowId != territoryId)
+            if (rows[rowIndex].IsAetheryte)
             {
-                continue;
+                found.Add(rows[rowIndex].RowId);
             }
-
-            found.Add(row.RowId);
         }
 
         return found.ToArray();
@@ -288,10 +289,12 @@ internal static class ZoneAetherytes
     // Every aetheryte and shard in the territory, invisible stops included, so the nearest node matches the library's own pick.
     private static AethernetNode[] ResolveAethernet(uint territoryId)
     {
-        var found = new List<AethernetNode>(8);
-        foreach (var row in Svc.Data.GetExcelSheet<Aetheryte>())
+        var rows = RowsIn(territoryId);
+        var found = new List<AethernetNode>(rows.Length);
+        for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
         {
-            if (row.Territory.RowId != territoryId || !TryResolvePosition(row, out var position))
+            var row = rows[rowIndex];
+            if (!TryResolvePosition(row, out var position))
             {
                 continue;
             }
@@ -310,27 +313,41 @@ internal static class ZoneAetherytes
             return row.RowId;
         }
 
-        return PrimaryByGroup().TryGetValue(row.AethernetGroup, out var primary) ? primary : 0;
+        return SheetIndex.PrimaryByGroup.TryGetValue(row.AethernetGroup, out var primary) ? primary : 0;
     }
 
-    private static Dictionary<byte, uint> PrimaryByGroup()
-    {
-        if (primaryByGroup is not null)
-        {
-            return primaryByGroup;
-        }
+    private static ReadOnlySpan<Aetheryte> RowsIn(uint territoryId)
+        => SheetIndex.RowsByTerritory.TryGetValue(territoryId, out var rows) ? rows : [];
 
+    private static AetheryteIndex BuildSheetIndex()
+    {
+        var sheet = Svc.Data.GetExcelSheet<Aetheryte>();
+        var grouped = new Dictionary<uint, List<Aetheryte>>();
         var primaries = new Dictionary<byte, uint>();
-        foreach (var row in Svc.Data.GetExcelSheet<Aetheryte>())
+        for (var rowIndex = 0; rowIndex < sheet.Count; rowIndex++)
         {
+            var row = sheet.GetRowAt(rowIndex);
             if (row.IsAetheryte)
             {
                 primaries.TryAdd(row.AethernetGroup, row.RowId);
             }
+
+            if (!grouped.TryGetValue(row.Territory.RowId, out var rows))
+            {
+                rows = [];
+                grouped[row.Territory.RowId] = rows;
+            }
+
+            rows.Add(row);
         }
 
-        primaryByGroup = primaries;
-        return primaries;
+        var rowsByTerritory = new Dictionary<uint, Aetheryte[]>(grouped.Count);
+        foreach (var (territoryId, rows) in grouped)
+        {
+            rowsByTerritory[territoryId] = [.. rows];
+        }
+
+        return new AetheryteIndex(rowsByTerritory, primaries);
     }
 
     private static string ResolveName(Aetheryte row)
@@ -357,4 +374,6 @@ internal static class ZoneAetherytes
     }
 
     private readonly record struct AethernetNode(ZoneAetheryte Stop, uint PrimaryId, bool Visible);
+
+    private sealed record AetheryteIndex(Dictionary<uint, Aetheryte[]> RowsByTerritory, Dictionary<byte, uint> PrimaryByGroup);
 }

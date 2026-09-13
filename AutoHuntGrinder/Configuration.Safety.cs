@@ -6,7 +6,7 @@ namespace AutoHuntGrinder;
 public sealed partial class Configuration
 {
     public bool AutoRepair { get; set; } = false;
-    public int AutoRepairThresholdPct { get; set; } = 20;
+    public int AutoRepairThresholdPercent { get; set; } = 20;
     public RepairMode RepairMode { get; set; } = RepairMode.SelfThenNpc;
     // Null sends NPC repairs to the Grand Company mender.
     public RepairNpc? PreferredRepairNpc { get; set; }
@@ -20,8 +20,8 @@ public sealed partial class Configuration
     public int HumanizerMarksBeforeBreak { get; set; } = 30;
     public int HumanizerBreakMinMinutes { get; set; } = 5;
     public int HumanizerBreakMaxMinutes { get; set; } = 10;
-    public int HumanizerPauseMinSec { get; set; } = 3;
-    public int HumanizerPauseMaxSec { get; set; } = 8;
+    public int HumanizerPauseMinSeconds { get; set; } = 3;
+    public int HumanizerPauseMaxSeconds { get; set; } = 8;
     public int HumanizerWanderMinMeters { get; set; } = 25;
     public int HumanizerWanderMaxMeters { get; set; } = 80;
 
@@ -30,8 +30,8 @@ public sealed partial class Configuration
     public HashSet<uint> HumanizerCities { get; set; } = BreakCities.NewDefaultSelection();
 
     public bool DeclinePartyInvites { get; set; } = false;
-    public int DeclineInviteDelayMinSec { get; set; } = 2;
-    public int DeclineInviteDelayMaxSec { get; set; } = 6;
+    public int DeclineInviteDelayMinSeconds { get; set; } = 2;
+    public int DeclineInviteDelayMaxSeconds { get; set; } = 6;
     public bool DeclineInviteReply { get; set; } = false;
     public PartyInviteReplyChannel DeclineInviteReplyChannel { get; set; } = PartyInviteReplyChannel.Tell;
     public string DeclineInviteReplyMessage { get; set; } = "";

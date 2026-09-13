@@ -38,8 +38,7 @@ public abstract partial class AutoCommon
 
     private enum BillAcceptOutcome { Accepted, Declined, Failed }
 
-    // Takes every bill in the list that is posted and not held yet, one hunt board at a time, starting with the board in
-    // the current city. Returns how many of them ended up held.
+    // The board in the current city goes first, since reaching it needs no teleport.
     protected async Task<int> PickUpBills(IReadOnlyList<HuntBill> bills)
     {
         MarkBillReader.Refresh(force: true);
@@ -342,7 +341,7 @@ public abstract partial class AutoCommon
             await NextFrame(BoardUiCheckFrames);
         }
 
-        Diag($"{scope}: the board menu did not open within {BoardMenuOpenTimeoutMs / 1000}s ({NpcInteraction.DescribeBlockers()})");
+        Diag($"{scope}: the board menu did not open within {BoardMenuOpenTimeoutMs / TimeUnits.MillisecondsPerSecond}s ({NpcInteraction.DescribeBlockers()})");
         return false;
     }
 
@@ -470,7 +469,7 @@ public abstract partial class AutoCommon
 
             if (Environment.TickCount64 >= deadline)
             {
-                Diag($"{scope}: board windows still open after {BoardWindowsCloseTimeoutMs / 1000}s ({DescribeBoardWindows(windowAddon)})");
+                Diag($"{scope}: board windows still open after {BoardWindowsCloseTimeoutMs / TimeUnits.MillisecondsPerSecond}s ({DescribeBoardWindows(windowAddon)})");
                 return;
             }
 

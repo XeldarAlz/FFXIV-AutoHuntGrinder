@@ -24,7 +24,7 @@ internal static class HuntBoards
     private const int RealmRebornMenuEntries = 3;
     private const int ClanMenuEntries = 5;
 
-    // EObj id, city, expansion, the grand company whose headquarters holds an ARR board, and the aethernet shard beside a board far from its aetheryte.
+    // Only a board far from its city's aetheryte names the aethernet shard beside it.
     private static readonly HuntBoard[] boards =
     [
         new(2004438, 128, ExpansionKind.ARR, GrandCompany.Maelstrom, 0),
@@ -50,7 +50,6 @@ internal static class HuntBoards
 
     public static int Count => boards.Length;
 
-    // Indexed by mark index: the expansion whose boards post the bill, its row in the board menu sheet, and its place in the menu.
     private static ReadOnlySpan<byte> ExpansionByMark => [0, 1, 1, 1, 0, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5];
 
     private static ReadOnlySpan<byte> MenuRowByMark => [1, 5, 6, 7, 2, 8, 12, 13, 14, 15, 18, 19, 20, 21, 24, 25, 26, 27, 30, 31, 32, 33];

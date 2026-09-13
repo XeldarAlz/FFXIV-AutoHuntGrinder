@@ -1,6 +1,5 @@
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
-using Dalamud.Game.ClientState.Conditions;
 using ECommons.DalamudServices;
 using System.Threading.Tasks;
 
@@ -17,9 +16,10 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
     private readonly IReadOnlyList<HuntBill> bills = bills;
     private readonly AutoHuntSession session = session;
     private readonly HuntProgress progress = progress;
-    private readonly HashSet<uint> givenUpNameIds = [];
-
-    private bool unhuntableReported;
+    // A board that could not be reached, or a bill left there at the abandon prompt, would cost the same trip every pass.
+    private readonly HashSet<byte> billsLeftOnBoard = [];
+    // A twin stop shares the mark's spawn points or FATE, so a miss on one bill is a miss on the other until the next pass.
+    private readonly HashSet<(uint NameId, uint TerritoryId)> missedThisPass = [];
 
     private readonly record struct Leftovers(int Marks, int Kills, int PickUps, int NoBoard, int Unhuntable, int Unreadable)
     {
@@ -55,6 +55,7 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
             if (!CancelToken.IsCancellationRequested)
             {
                 Warn("Run: the character never loaded, so the bills could not be read");
+                Svc.Chat.PrintError($"{AhgConstants.LogPrefix} The character did not finish loading, so the hunt stops.");
             }
 
             return;
@@ -67,8 +68,14 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
             return;
         }
 
-        for (var pass = 1; pass <= MaxHuntPasses; pass++)
+        while (session.HuntPassesCompleted < MaxHuntPasses)
         {
+            var pass = session.HuntPassesCompleted + 1;
+            if (!await EnsureStanding())
+            {
+                return;
+            }
+
             var killsBefore = session.MarksKilled;
             var pickedUp = await PickUpPostedBills();
             if (CancelToken.IsCancellationRequested)
@@ -88,6 +95,7 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
                 return;
             }
 
+            session.HuntPassesCompleted++;
             if (pickedUp == 0 && session.MarksKilled == killsBefore)
             {
                 Diag($"Run: pass {pass} picked up no bill and credited no kill; not planning another");
@@ -100,25 +108,64 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
 
     private async Task<int> PickUpPostedBills()
     {
-        MarkBillReader.Refresh(force: true);
-        if (!AnyBillPosted())
+        var posted = PostedBills();
+        if (posted.Count == 0)
         {
             return 0;
         }
 
         ReportNoMark();
         ReportPhase(HuntPhase.PickingUp);
-        return await PickUpBills(bills);
+        var pickedUp = await PickUpBills(posted);
+        if (!CancelToken.IsCancellationRequested)
+        {
+            NoteBillsLeftOnBoard(posted);
+        }
+
+        return pickedUp;
+    }
+
+    private List<HuntBill> PostedBills()
+    {
+        MarkBillReader.Refresh(force: true);
+        var posted = new List<HuntBill>(bills.Count);
+        for (var billIndex = 0; billIndex < bills.Count; billIndex++)
+        {
+            var bill = bills[billIndex];
+            if (MarkBillReader.Status(bill.MarkIndex) == BillStatus.Available && !billsLeftOnBoard.Contains(bill.MarkIndex))
+            {
+                posted.Add(bill);
+            }
+        }
+
+        return posted;
+    }
+
+    private void NoteBillsLeftOnBoard(List<HuntBill> posted)
+    {
+        MarkBillReader.Refresh(force: true);
+        for (var billIndex = 0; billIndex < posted.Count; billIndex++)
+        {
+            var bill = posted[billIndex];
+            if (MarkBillReader.Status(bill.MarkIndex) != BillStatus.Available)
+            {
+                continue;
+            }
+
+            billsLeftOnBoard.Add(bill.MarkIndex);
+            Diag($"Run: {bill.Name} is still not picked up; later passes leave it on the board");
+        }
     }
 
     private List<HuntStop> PlanRoute(int pass)
     {
         Status = "Planning the route";
         var planned = RoutePlanner.Plan(bills);
+        var givenUp = session.GivenUpNameIds;
         var route = new List<HuntStop>(planned.Length);
         for (var stopIndex = 0; stopIndex < planned.Length; stopIndex++)
         {
-            if (!givenUpNameIds.Contains(planned[stopIndex].Target.NameId))
+            if (!givenUp.Contains(planned[stopIndex].Target.NameId))
             {
                 route.Add(planned[stopIndex]);
             }
@@ -131,15 +178,22 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
             Diag($"Route {stopIndex + 1}/{route.Count}: {stop.Target.Name} for {stop.Bill.Name}, {stop.Target.Killed}/{stop.Target.Needed} in {stop.Target.ZoneName} (territory {stop.TerritoryId}, FATE {stop.FateId})");
         }
 
+        ReportRoute(route);
         return route;
     }
 
-    // False when the run has to stop: a Stop or Pause, or the combat plugin gone quiet.
     private async Task<bool> HuntRoute(List<HuntStop> route, int pass)
     {
+        missedThisPass.Clear();
         for (var stopIndex = 0; stopIndex < route.Count; stopIndex++)
         {
             var stop = route[stopIndex];
+            ReportRouteStop(stopIndex);
+            if (SkipStop(stop))
+            {
+                continue;
+            }
+
             ReportPhase(HuntPhase.Upkeep);
             if (await RunUpkeep())
             {
@@ -164,9 +218,9 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
             session.Sample();
             CountKills(session.MarksKilled - killsBefore);
             ReportNoMark();
-            if (Svc.Condition[ConditionFlag.Unconscious])
+            if (!await EnsureStanding())
             {
-                await RecoverFromMarkKnockout();
+                return false;
             }
 
             if (!Settle(stop, outcome))
@@ -175,7 +229,50 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
             }
         }
 
+        ReportRouteStop(route.Count);
         return true;
+    }
+
+    private bool SkipStop(in HuntStop stop)
+    {
+        if (session.GivenUpNameIds.Contains(stop.Target.NameId))
+        {
+            Diag($"Run: skipping {stop.Target.Name} for {stop.Bill.Name}; it was given up earlier in this run");
+            return true;
+        }
+
+        if (!missedThisPass.Contains((stop.Target.NameId, stop.TerritoryId)))
+        {
+            return false;
+        }
+
+        Diag($"Run: skipping {stop.Target.Name} for {stop.Bill.Name}; it was just missed for another bill, and the next pass looks again");
+        return true;
+    }
+
+    // A knockout the revive cannot clear would fail every later mark the same way, so the run stops instead.
+    private async Task<bool> EnsureStanding()
+    {
+        if (!IsMarkKnockedOut())
+        {
+            return true;
+        }
+
+        Diag("Run: the character is knocked out; bringing it back before going on");
+        var standing = await RecoverFromMarkKnockout();
+        if (CancelToken.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        if (standing)
+        {
+            return true;
+        }
+
+        Warn("Run: the character is still knocked out after the revive; stopping the run");
+        Svc.Chat.PrintError($"{AhgConstants.LogPrefix} The character could not get back on its feet, so the hunt stops.");
+        return false;
     }
 
     private bool Settle(in HuntStop stop, MarkOutcome outcome)
@@ -202,8 +299,12 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
             case MarkOutcome.Unsupported:
                 GiveUp(stop, outcome);
                 return true;
+            case MarkOutcome.NotFound or MarkOutcome.Unreachable or MarkOutcome.FateMissed:
+                missedThisPass.Add((stop.Target.NameId, stop.TerritoryId));
+                Diag($"Run: {name} ended {outcome}; moving on, and the next pass may try it again");
+                return true;
             default:
-                Diag($"Run: {name} ended {outcome}; moving on, and a later pass may try it again");
+                Diag($"Run: {name} ended {outcome}; moving on");
                 return true;
         }
     }
@@ -211,7 +312,7 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
     // Keyed by the mark itself, so a mark that beat the character on one bill is not fought again for another.
     private void GiveUp(in HuntStop stop, MarkOutcome outcome)
     {
-        givenUpNameIds.Add(stop.Target.NameId);
+        session.GivenUpNameIds.Add(stop.Target.NameId);
         Diag($"Run: giving up on {stop.Target.Name} for the rest of this run ({outcome})");
     }
 
@@ -242,12 +343,15 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
     // Marks with no spawn data and bills no board offers are beyond the run, so they do not hold back the after-run action.
     private Leftovers CountLeftovers()
     {
-        MarkBillReader.Refresh(force: true);
-        var marks = 0;
+        var huntable = RoutePlanner.Huntable(bills);
         var kills = 0;
+        for (var stopIndex = 0; stopIndex < huntable.Length; stopIndex++)
+        {
+            kills += huntable[stopIndex].Target.Remaining;
+        }
+
         var pickUps = 0;
         var noBoard = 0;
-        var unhuntable = 0;
         var unreadable = 0;
         for (var billIndex = 0; billIndex < bills.Count; billIndex++)
         {
@@ -257,42 +361,16 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
                 case BillStatus.Locked:
                     unreadable++;
                     break;
-                case BillStatus.Available:
-                    if (HuntBoards.TryChoose(markIndex, out _))
-                    {
-                        pickUps++;
-                    }
-                    else
-                    {
-                        noBoard++;
-                    }
-
+                case BillStatus.Available when HuntBoards.TryChoose(markIndex, out _):
+                    pickUps++;
                     break;
-                case BillStatus.Held or BillStatus.Stale:
-                    var targets = MarkBillReader.Targets(markIndex);
-                    for (var targetIndex = 0; targetIndex < targets.Length; targetIndex++)
-                    {
-                        var target = targets[targetIndex];
-                        if (target.Done)
-                        {
-                            continue;
-                        }
-
-                        if (!RoutePlanner.CanHunt(target))
-                        {
-                            unhuntable++;
-                            continue;
-                        }
-
-                        marks++;
-                        kills += target.Remaining;
-                    }
-
+                case BillStatus.Available:
+                    noBoard++;
                     break;
             }
         }
 
-        return new Leftovers(marks, kills, pickUps, noBoard, unhuntable, unreadable);
+        return new Leftovers(huntable.Length, kills, pickUps, noBoard, RoutePlanner.Unsupported(bills).Length, unreadable);
     }
 
     private static string CompletionMessage(in Leftovers left)
@@ -318,7 +396,7 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
 
     private void ReportUnhuntable()
     {
-        if (unhuntableReported)
+        if (session.UnhuntableReported)
         {
             return;
         }
@@ -329,7 +407,7 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
             return;
         }
 
-        unhuntableReported = true;
+        session.UnhuntableReported = true;
         var names = new List<string>(stops.Length);
         for (var stopIndex = 0; stopIndex < stops.Length; stopIndex++)
         {
@@ -342,19 +420,6 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
         }
 
         Svc.Chat.Print($"{AhgConstants.LogPrefix} No spawn points are known for {string.Join(", ", names)}, so the run leaves {(names.Count == 1 ? "it" : "them")} to you.");
-    }
-
-    private bool AnyBillPosted()
-    {
-        for (var billIndex = 0; billIndex < bills.Count; billIndex++)
-        {
-            if (MarkBillReader.Status(bills[billIndex].MarkIndex) == BillStatus.Available)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     // A Stop or Pause cancels the task before its last lines run, and those lines must not overwrite what the controller set.
@@ -379,6 +444,22 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
         if (!CancelToken.IsCancellationRequested)
         {
             progress.ClearMark();
+        }
+    }
+
+    private void ReportRoute(List<HuntStop> route)
+    {
+        if (!CancelToken.IsCancellationRequested)
+        {
+            progress.SetRoute(route);
+        }
+    }
+
+    private void ReportRouteStop(int stopIndex)
+    {
+        if (!CancelToken.IsCancellationRequested)
+        {
+            progress.SetRouteStop(stopIndex);
         }
     }
 

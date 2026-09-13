@@ -94,8 +94,6 @@ internal sealed class NavmeshIPC
             (Vector3?)null,
             NearestPointReachableFailed);
 
-    // The highest floor at or below the point, searched within halfExtentXZ sideways. allowUnlandable false keeps
-    // the answer on the part of the mesh the character can actually reach.
     public Vector3? PointOnFloor(Vector3 point, bool allowUnlandable, float halfExtentXZ)
         => IpcGate.Invoke(
             pointOnFloor.HasFunction,

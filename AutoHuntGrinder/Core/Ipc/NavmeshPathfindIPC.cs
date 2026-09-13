@@ -20,7 +20,6 @@ internal sealed class NavmeshPathfindIPC
 
     public static NavmeshPathfindIPC Instance => instance ??= new NavmeshPathfindIPC();
 
-    // Plans a route without walking it. Null when the navmesh plugin is missing or refused the query.
     public Task<List<Vector3>>? Pathfind(Vector3 from, Vector3 to, bool fly)
         => IpcGate.Invoke<Task<List<Vector3>>?>(
             pathfind.HasFunction,

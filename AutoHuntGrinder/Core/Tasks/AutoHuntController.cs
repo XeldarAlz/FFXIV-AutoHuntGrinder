@@ -1,16 +1,20 @@
 using AutoHuntGrinder.Core.External;
 using AutoHuntGrinder.Core.Hunts;
+using AutoHuntGrinder.Core.Ipc;
 using clib.Services;
 
 namespace AutoHuntGrinder.Core.Tasks;
 
 internal sealed partial class AutoHuntController
 {
+    private const int SessionSampleIntervalMs = 1_000;
+
     private readonly HuntProgress progress = new();
 
     private AutoHuntSession? session;
     private HuntBill[] activeBills = [];
     private AutoCommon? currentTask;
+    private long nextSessionSampleAtMs;
 
     public bool Running => Svc.Automation.Running || Paused;
 
@@ -59,17 +63,41 @@ internal sealed partial class AutoHuntController
     public void Stop()
     {
         var ending = session;
+        var wasPaused = Paused;
         currentTask = null;
         PauseReason = PauseReason.None;
         Svc.Automation.Stop();
-        FinalizeRun(ending);
-        session = null;
-        activeBills = [];
-        progress.Reset();
+        if (ending is not null)
+        {
+            ReleaseHelpers();
+        }
+
+        // Pause already credited the run, and anything done since was the player's own play.
+        FinalizeRun(ending, sample: !wasPaused);
+        ClearRun();
         if (ending is not null)
         {
             Diag("Stop requested; session cleared.");
         }
+    }
+
+    // Credits kills as they land, so the stat tiles keep pace with the live kill counts. A paused run is left alone,
+    // because Resume makes the game state its new zero point.
+    public void Tick()
+    {
+        if (session is null || session.Recorded || Paused)
+        {
+            return;
+        }
+
+        var now = Environment.TickCount64;
+        if (now < nextSessionSampleAtMs)
+        {
+            return;
+        }
+
+        nextSessionSampleAtMs = now + SessionSampleIntervalMs;
+        session.Sample();
     }
 
     private void StartHunt(AutoHuntSession owningSession)
@@ -93,6 +121,21 @@ internal sealed partial class AutoHuntController
             currentTask = null;
             onCompleted();
         });
+    }
+
+    private void ClearRun()
+    {
+        session = null;
+        activeBills = [];
+        progress.Reset();
+    }
+
+    // A stopped task unwinds on a later frame, and after an unload that frame may never come, so the combat preset and
+    // the pathfinder are released here as well.
+    private static void ReleaseHelpers()
+    {
+        BossModIPC.Instance.ClearActive();
+        NavmeshIPC.Instance.Stop();
     }
 }
 

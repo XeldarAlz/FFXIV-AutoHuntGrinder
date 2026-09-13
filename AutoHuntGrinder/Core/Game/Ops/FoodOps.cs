@@ -17,7 +17,6 @@ internal static unsafe class FoodOps
     private const string UseThrottleKey = "AutoHuntGrinder.Food.Use";
     // The game drops item uses sent faster than this.
     private const int UseThrottleMs = 500;
-    private const float SecondsPerMinute = 60f;
 
     // Item UI categories holding food and medicine; the granted status weeds out everything else in them.
     private static readonly uint[] ConsumableUiCategories = [44, 45, 46];
@@ -29,7 +28,7 @@ internal static unsafe class FoodOps
     private static ConsumableEntry[] Catalog => catalog ??= BuildCatalog();
 
     public static float MinimumBuffSeconds(Configuration configuration)
-        => Math.Max(0, configuration.AutoConsumeMinMinutes) * SecondsPerMinute;
+        => Math.Max(0, configuration.AutoConsumeMinMinutes) * TimeUnits.SecondsPerMinute;
 
     public static bool HasStatus(uint statusId, float minimumSeconds)
     {
@@ -102,7 +101,6 @@ internal static unsafe class FoodOps
         return true;
     }
 
-    // The catalog entries with at least one copy in the bags, found in a single pass over the bags.
     public static void FillAvailable(List<ConsumableEntry> destination)
     {
         destination.Clear();
@@ -153,9 +151,11 @@ internal static unsafe class FoodOps
 
     private static ConsumableEntry[] BuildCatalog()
     {
+        var sheet = Svc.Data.GetExcelSheet<Item>();
         var entries = new List<ConsumableEntry>();
-        foreach (var item in Svc.Data.GetExcelSheet<Item>())
+        for (var rowIndex = 0; rowIndex < sheet.Count; rowIndex++)
         {
+            var item = sheet.GetRowAt(rowIndex);
             if (Array.IndexOf(ConsumableUiCategories, item.ItemUICategory.RowId) < 0 || item.ItemAction.ValueNullable is not { } action)
             {
                 continue;

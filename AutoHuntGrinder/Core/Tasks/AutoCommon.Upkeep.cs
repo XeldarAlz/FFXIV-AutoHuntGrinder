@@ -15,7 +15,6 @@ public abstract partial class AutoCommon
     // A failed repair or break tends to fail the same way straight after (no Dark Matter, city not attuned), so it rests first.
     private const int UpkeepRepairRetryMs = 600_000;
     private const int UpkeepBreakRetryMs = 300_000;
-    private const int UpkeepMillisecondsPerMinute = 60_000;
 
     private int marksSinceBreak;
     private long repairRetryAtMs;
@@ -25,9 +24,8 @@ public abstract partial class AutoCommon
     // starts over whenever a run starts or resumes.
     protected void NoteMarkKilled() => marksSinceBreak++;
 
-    // Called between marks: repairs worn gear, takes a city break when one is due, then tops up food and medicine. It waits
-    // briefly for combat to clear and skips while the character is down or zoning. True when any step ran, which can leave
-    // the character dismounted or in another zone, so the caller should travel to its next spot afresh.
+    // True when any step ran, which can leave the character dismounted or in another zone, so the caller should travel
+    // to its next spot afresh.
     protected async Task<bool> RunUpkeep()
     {
         var configuration = Plugin.Instance.Configuration;
@@ -64,7 +62,7 @@ public abstract partial class AutoCommon
     private bool UpkeepRepairDue(Configuration configuration)
         => configuration.AutoRepair
         && Environment.TickCount64 >= repairRetryAtMs
-        && RepairOps.NeedsRepair(configuration.AutoRepairThresholdPct);
+        && RepairOps.NeedsRepair(configuration.AutoRepairThresholdPercent);
 
     private bool UpkeepBreakDue(Configuration configuration)
         => configuration.HumanizerEnabled
@@ -117,7 +115,7 @@ public abstract partial class AutoCommon
         }
 
         repairRetryAtMs = Environment.TickCount64 + UpkeepRepairRetryMs;
-        Warn($"Upkeep: the repair did not finish; the next try waits {UpkeepRepairRetryMs / UpkeepMillisecondsPerMinute} minutes");
+        Warn($"Upkeep: the repair did not finish; the next try waits {UpkeepRepairRetryMs / TimeUnits.MillisecondsPerMinute} minutes");
     }
 
     private async Task RunScheduledBreak(Configuration configuration)
@@ -132,7 +130,7 @@ public abstract partial class AutoCommon
 
         var minutes = RollBreakMinutes(configuration);
         Diag($"Upkeep: {marksSinceBreak} marks since the last break (every {configuration.HumanizerMarksBeforeBreak}); taking a {minutes}m break");
-        if (await TakeCityBreak(cityTerritoryId, minutes * UpkeepMillisecondsPerMinute))
+        if (await TakeCityBreak(cityTerritoryId, minutes * TimeUnits.MillisecondsPerMinute))
         {
             marksSinceBreak = 0;
             return;
@@ -144,7 +142,7 @@ public abstract partial class AutoCommon
         }
 
         breakRetryAtMs = Environment.TickCount64 + UpkeepBreakRetryMs;
-        Warn($"Upkeep: could not reach {TerritoryNames.Of(cityTerritoryId)} for the break; the next try waits {UpkeepBreakRetryMs / UpkeepMillisecondsPerMinute} minutes");
+        Warn($"Upkeep: could not reach {TerritoryNames.Of(cityTerritoryId)} for the break; the next try waits {UpkeepBreakRetryMs / TimeUnits.MillisecondsPerMinute} minutes");
     }
 
     // Each item gets a wall-clock deadline, so a use the game never applies cannot park the run.
@@ -189,7 +187,6 @@ public abstract partial class AutoCommon
         return false;
     }
 
-    // A random ticked city from the list, or 0 when none is ticked.
     private static uint PickBreakCity(Configuration configuration)
     {
         var cities = BreakCities.All;

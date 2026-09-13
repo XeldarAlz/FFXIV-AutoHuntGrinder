@@ -44,8 +44,6 @@ internal static class StuckDetector
         };
     }
 
-    // Trips when the character makes no progress while nothing legitimate is running: an operation, usually a
-    // teleport, that accepted its command and never started. A real cast or zone load resets the timer.
     internal static Func<bool> IdleStallAbort(int timeoutMs)
     {
         Vector3? anchor = null;

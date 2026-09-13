@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 
 namespace AutoHuntGrinder.Core.Tasks;
 
-// Debug probe for the travel stack: "/ahg goto <territoryId> <x> <y> <z>" travels there, "/ahg goto stop" cancels it.
 internal sealed class AutoGoto(uint territoryId, Vector3 destination) : AutoCommon
 {
     private const float ArriveWithinMeters = 3f;

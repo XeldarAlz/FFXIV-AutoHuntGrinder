@@ -52,7 +52,7 @@ public abstract partial class AutoCommon
 
         Diag(aborted
             ? $"RunCancellable '{label}' aborting sub-task (abort condition met)"
-            : $"WATCHDOG: '{label}' exceeded {timeoutMs / 1000}s; cancelling sub-task");
+            : $"WATCHDOG: '{label}' exceeded {timeoutMs / TimeUnits.MillisecondsPerSecond}s; cancelling sub-task");
         TryCancel(operation, label);
 
         var grace = Environment.TickCount64 + SubTaskUnwindGraceMs;
@@ -63,7 +63,7 @@ public abstract partial class AutoCommon
 
         if (!work.IsCompleted)
         {
-            Diag($"WATCHDOG: '{label}' did not unwind {SubTaskUnwindGraceMs / 1000}s after Cancel (unexpected)");
+            Diag($"WATCHDOG: '{label}' did not unwind {SubTaskUnwindGraceMs / TimeUnits.MillisecondsPerSecond}s after Cancel (unexpected)");
         }
 
         return false;

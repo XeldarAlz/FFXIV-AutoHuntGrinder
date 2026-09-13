@@ -34,6 +34,8 @@ internal static class RoutePlanner
         return [.. route];
     }
 
+    public static HuntStop[] Huntable(IReadOnlyList<HuntBill> bills) => [.. Collect(bills, supported: true)];
+
     // Marks that still need kills but can be neither searched for nor waited on: no spawn points and no FATE.
     public static HuntStop[] Unsupported(IReadOnlyList<HuntBill> bills) => [.. Collect(bills, supported: false)];
 

@@ -24,9 +24,10 @@ internal static unsafe class MarkFinder
     private const ulong NoTargetId = 0xE0000000;
 
     // fateId 0 matches only mobs outside any FATE; any other value matches only mobs spawned by that FATE.
-    public static bool TryFindNearest(uint nameId, uint fateId, Vector3 from, ReadOnlySpan<ulong> ignored, out MarkSighting sighting)
+    public static bool TryFindNearest(uint nameId, uint fateId, bool honorClaims, Vector3 from, ReadOnlySpan<ulong> ignored, out MarkSighting sighting, out int claimedSkipped)
     {
         sighting = default;
+        claimedSkipped = 0;
         var found = false;
         var bestDistance = float.MaxValue;
         var objects = Svc.Objects;
@@ -38,8 +39,14 @@ internal static unsafe class MarkFinder
                 continue;
             }
 
-            if (!IsHuntable(npc, fateId, localPlayerId) || ignored.Contains(npc.GameObjectId))
+            if (!IsHuntable(npc, fateId) || ignored.Contains(npc.GameObjectId))
             {
+                continue;
+            }
+
+            if (honorClaims && ClaimedByOther(npc.TargetObjectId, localPlayerId))
+            {
+                claimedSkipped++;
                 continue;
             }
 
@@ -57,7 +64,6 @@ internal static unsafe class MarkFinder
         return found;
     }
 
-    // Follows the one instance a fight started on; false once it is dead, despawned or untargetable.
     public static bool TryGetLive(ulong gameObjectId, Vector3 from, out MarkSighting sighting)
     {
         sighting = default;
@@ -87,7 +93,7 @@ internal static unsafe class MarkFinder
         return gameObject is not null && gameObject.GameObjectId == sighting.GameObjectId ? gameObject : null;
     }
 
-    private static bool IsHuntable(IBattleNpc npc, uint fateId, ulong localPlayerId)
+    private static bool IsHuntable(IBattleNpc npc, uint fateId)
     {
         if (!IsAlive(npc))
         {
@@ -95,12 +101,7 @@ internal static unsafe class MarkFinder
         }
 
         var native = (CSGameObject*)npc.Address;
-        if (native->BattleNpcSubKind != BattleNpcSubKind.Combatant || native->FateId != fateId)
-        {
-            return false;
-        }
-
-        return !ClaimedByOther(npc.TargetObjectId, localPlayerId);
+        return native->BattleNpcSubKind == BattleNpcSubKind.Combatant && native->FateId == fateId;
     }
 
     private static bool IsAlive(IBattleNpc npc) => npc.IsTargetable && !npc.IsDead && npc.CurrentHp > 0;

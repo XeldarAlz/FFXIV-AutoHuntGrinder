@@ -16,17 +16,15 @@ public abstract partial class AutoCommon
     private const int RepairFinishWaitMs = 30_000;
     private const int RepairFinishPollFrames = 60;
     // Self-repair counts only when it lifts the gear this far past the threshold; anything less goes on to the mender.
-    private const float RepairSelfSuccessMarginPct = 5f;
+    private const float RepairSelfSuccessMarginPercent = 5f;
     // Above this with the window closed, the repair has landed even if its animation flag was missed.
-    private const float RepairDoneConditionPct = 95f;
+    private const float RepairDoneConditionPercent = 95f;
 
-    // Dark Matter from the bag first, then the Grand Company mender or the custom repair NPC, as the settings allow.
-    // True when the gear came back above the threshold.
     protected async Task<bool> RepairGear()
     {
         var configuration = Plugin.Instance.Configuration;
-        var before = RepairOps.LowestEquippedConditionPct();
-        Diag($"Repair: lowest condition {before:F1}%, threshold {configuration.AutoRepairThresholdPct}%, mode {configuration.RepairMode}");
+        var before = RepairOps.LowestEquippedConditionPercent();
+        Diag($"Repair: lowest condition {before:F1}%, threshold {configuration.AutoRepairThresholdPercent}%, mode {configuration.RepairMode}");
         Svc.Chat.Print($"{AhgConstants.LogPrefix} Repairing gear (lowest at {before:F0}%).");
 
         var allowSelf = configuration.RepairMode is RepairMode.SelfThenNpc or RepairMode.SelfOnly;
@@ -41,7 +39,7 @@ public abstract partial class AutoCommon
             Warn("Repair: self-repair failed and NPC repair is off");
         }
 
-        var after = RepairOps.LowestEquippedConditionPct();
+        var after = RepairOps.LowestEquippedConditionPercent();
         if (repaired)
         {
             Svc.Chat.Print($"{AhgConstants.LogPrefix} Repair done. Lowest condition went from {before:F0}% to {after:F0}%.");
@@ -189,9 +187,9 @@ public abstract partial class AutoCommon
 
         await WaitForRepairToLand();
         RepairOps.HideRepairWindow();
-        var after = RepairOps.LowestEquippedConditionPct();
+        var after = RepairOps.LowestEquippedConditionPercent();
         Diag($"Repair: lowest condition now {after:F1}%");
-        return after > Plugin.Instance.Configuration.AutoRepairThresholdPct + RepairSelfSuccessMarginPct;
+        return after > Plugin.Instance.Configuration.AutoRepairThresholdPercent + RepairSelfSuccessMarginPercent;
     }
 
     // The repair animation raises Occupied39, and the condition jumps to full once it ends.
@@ -210,7 +208,7 @@ public abstract partial class AutoCommon
                 return;
             }
 
-            if (!RepairOps.RepairWindowOpen() && RepairOps.LowestEquippedConditionPct() > RepairDoneConditionPct)
+            if (!RepairOps.RepairWindowOpen() && RepairOps.LowestEquippedConditionPercent() > RepairDoneConditionPercent)
             {
                 return;
             }

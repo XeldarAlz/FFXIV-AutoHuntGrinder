@@ -5,7 +5,6 @@ using Dalamud.Interface.Utility.Raii;
 
 namespace AutoHuntGrinder.Windows.Sections.Config;
 
-// Numbered rows with a remove button, shared by the settings lists.
 internal static class ListRows
 {
     private static string[] ordinals = [];

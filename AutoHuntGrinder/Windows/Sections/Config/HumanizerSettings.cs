@@ -71,8 +71,8 @@ internal static class HumanizerSettings
             Loc.T(L.Safety.PauseBetweenHelp),
             SettingsControls.RangeInlineWidth(),
             () => SettingsControls.DrawRangeInline(configuration, "##ahg_humanizer_pause_min", "##ahg_humanizer_pause_max",
-                () => configuration.HumanizerPauseMinSec, value => configuration.HumanizerPauseMinSec = value,
-                () => configuration.HumanizerPauseMaxSec, value => configuration.HumanizerPauseMaxSec = value,
+                () => configuration.HumanizerPauseMinSeconds, value => configuration.HumanizerPauseMinSeconds = value,
+                () => configuration.HumanizerPauseMaxSeconds, value => configuration.HumanizerPauseMaxSeconds = value,
                 PauseSecondsMax, 0, Loc.T(L.Safety.SecondsFormat)));
 
         SettingsRow.Draw(Loc.T(L.Safety.WalkDistance),
@@ -129,7 +129,6 @@ internal static class HumanizerSettings
         }
     }
 
-    // True when the city ends the frame ticked.
     private static bool DrawCityToggle(Configuration configuration, uint territoryId)
     {
         var selected = configuration.HumanizerCities.Contains(territoryId);

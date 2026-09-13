@@ -39,16 +39,9 @@ internal static class CurrentMark
     private static (int Killed, int Needed) LiveKills(byte markIndex, in HuntTarget target)
     {
         MarkBillReader.Refresh();
-        var targets = MarkBillReader.Targets(markIndex);
-        for (var index = 0; index < targets.Length; index++)
-        {
-            if (targets[index].TargetRowId == target.TargetRowId)
-            {
-                return (Math.Min(targets[index].Killed, targets[index].Needed), targets[index].Needed);
-            }
-        }
-
-        return (target.Needed, target.Needed);
+        return MarkBillReader.TryFindTarget(markIndex, target.TargetRowId, out var listed)
+            ? (Math.Min(listed.Killed, listed.Needed), listed.Needed)
+            : (target.Needed, target.Needed);
     }
 
     private static void Compose(byte markIndex, in HuntTarget target, int killed, int needed)

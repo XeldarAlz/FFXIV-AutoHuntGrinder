@@ -47,7 +47,6 @@ public abstract partial class AutoCommon
         new("occupied", [ConditionFlag.Occupied33, ConditionFlag.Occupied38, ConditionFlag.Occupied39]),
     ];
 
-    // A compact condition snapshot for the log that names exactly which state blocks a teleport cast.
     internal static string ConditionTag()
     {
         var condition = Svc.Condition;
@@ -80,7 +79,7 @@ public abstract partial class AutoCommon
         if (Svc.Condition[ConditionFlag.InCombat] || Svc.Condition[ConditionFlag.Casting])
         {
             Status = "Waiting for combat to clear before teleporting";
-            Diag($"{scope}: combat or casting ({ConditionTag()}), waiting up to {TeleportCombatClearMs / 1000}s for a castable window");
+            Diag($"{scope}: combat or casting ({ConditionTag()}), waiting up to {TeleportCombatClearMs / TimeUnits.MillisecondsPerSecond}s for a castable window");
             await WaitUntilTimed(
                 () => !Svc.Condition[ConditionFlag.InCombat] && !Svc.Condition[ConditionFlag.Casting],
                 TeleportCombatClearMs,
@@ -141,13 +140,13 @@ public abstract partial class AutoCommon
             return true;
         }
 
-        Diag($"{scope}: Return home did not complete within {ReturnHomeWaitMs / 1000}s");
+        Diag($"{scope}: Return home did not complete within {ReturnHomeWaitMs / TimeUnits.MillisecondsPerSecond}s");
         return false;
     }
 
-    // Resilient cross-zone teleport. A teleport can be accepted and never start casting; the idle guard catches that in
-    // seconds and the attempt is retried after a short backoff. A fault is different: the request was answered and the
-    // same request gets the same answer, so it earns one retry and never the Return escalation. True once in territoryId.
+    // A teleport can be accepted and never start casting; the idle guard catches that in seconds and the attempt is
+    // retried after a short backoff. A fault is different: the request was answered and the same request gets the same
+    // answer, so it earns one retry and never the Return escalation.
     internal async Task<bool> TeleportToTerritory(uint territoryId, Vector3 destination, string label, int perAttemptTimeoutMs, int attempts = 4)
     {
         if (Svc.ClientState.TerritoryType == territoryId)

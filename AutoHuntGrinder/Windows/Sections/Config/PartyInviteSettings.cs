@@ -51,8 +51,8 @@ internal static class PartyInviteSettings
             Loc.T(L.Safety.DeclineDelayHelp),
             SettingsControls.RangeInlineWidth(),
             () => SettingsControls.DrawRangeInline(configuration, "##ahg_invites_delay_min", "##ahg_invites_delay_max",
-                () => configuration.DeclineInviteDelayMinSec, value => configuration.DeclineInviteDelayMinSec = value,
-                () => configuration.DeclineInviteDelayMaxSec, value => configuration.DeclineInviteDelayMaxSec = value,
+                () => configuration.DeclineInviteDelayMinSeconds, value => configuration.DeclineInviteDelayMinSeconds = value,
+                () => configuration.DeclineInviteDelayMaxSeconds, value => configuration.DeclineInviteDelayMaxSeconds = value,
                 DelaySecondsMax, 0, Loc.T(L.Safety.SecondsFormat)));
     }
 

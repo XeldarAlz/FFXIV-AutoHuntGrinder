@@ -1,6 +1,5 @@
 namespace AutoHuntGrinder.Core.Game.Player;
 
-// The values PlayerState.GrandCompany takes.
 internal static class GrandCompanyId
 {
     public const byte None = 0;

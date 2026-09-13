@@ -5,10 +5,11 @@ namespace AutoHuntGrinder.Core.Tasks;
 internal sealed partial class AutoHuntController
 {
     private const int MaxFaultResumes = 3;
-    private const long FaultResumeWindowMs = 5 * 60_000;
-    private const long MillisecondsPerMinute = 60_000;
+    private const int MaxFaultResumesPerRun = 6;
+    private const long FaultResumeWindowMs = 5 * TimeUnits.MillisecondsPerMinute;
 
     private int faultResumeCount;
+    private int runFaultResumeCount;
     private long faultWindowStartedAtMs;
 
     private void OnHuntEnded(AutoHuntSession owningSession)
@@ -29,30 +30,33 @@ internal sealed partial class AutoHuntController
 
     private void EndRun(AutoHuntSession owningSession)
     {
-        FinalizeRun(owningSession);
+        FinalizeRun(owningSession, sample: true);
         if (!ReferenceEquals(session, owningSession))
         {
             Diag("A run that is no longer live ended; it was recorded and the current run is left alone.");
             return;
         }
 
-        session = null;
-        activeBills = [];
-        progress.Reset();
-        MaybeRunAfterAction(owningSession);
+        progress.ClearMark();
+        progress.ClearRoute();
+        if (!TryRunAfterAction(owningSession))
+        {
+            ClearRun();
+        }
     }
 
-    private void MaybeRunAfterAction(AutoHuntSession ending)
+    // The finished run stays on screen while its after-run action runs, and is cleared once that ends.
+    private bool TryRunAfterAction(AutoHuntSession ending)
     {
         if (ending.AfterActionDispatched)
         {
-            return;
+            return false;
         }
 
         if (!ending.CompletedByStopCondition || ending.EndedWithFault)
         {
             Diag($"Run ended without meeting its stop condition (fault {ending.EndedWithFault}); no after-run action.");
-            return;
+            return false;
         }
 
         ending.AfterActionDispatched = true;
@@ -60,13 +64,13 @@ internal sealed partial class AutoHuntController
         if (action == AfterRunAction.StayLoggedIn)
         {
             Diag("Run completed by its stop condition; the after-run action is StayLoggedIn, nothing to do.");
-            return;
+            return false;
         }
 
         if (ending.DidNothing)
         {
             Diag($"Run ended by its stop condition without doing any work; skipping after-run action {action}.");
-            return;
+            return false;
         }
 
         Diag($"Run completed by its stop condition; starting after-run action {action}.");
@@ -75,12 +79,13 @@ internal sealed partial class AutoHuntController
         RunTask(task, () =>
         {
             Diag($"After-run action {action} finished.");
-            progress.SetPhase(HuntPhase.Idle);
+            ClearRun();
         });
+        return true;
     }
 
     // Idempotent through Recorded, so an explicit Stop and a finished task can both call it.
-    private void FinalizeRun(AutoHuntSession? ending)
+    private void FinalizeRun(AutoHuntSession? ending, bool sample)
     {
         if (ending is null || ending.Recorded)
         {
@@ -88,9 +93,14 @@ internal sealed partial class AutoHuntController
         }
 
         ending.Recorded = true;
+        ending.End();
         try
         {
-            ending.Sample();
+            if (sample)
+            {
+                ending.Sample();
+            }
+
             if (ending.DidNothing)
             {
                 Diag("Run did no work; nothing recorded to history.");
@@ -122,11 +132,13 @@ internal sealed partial class AutoHuntController
     private void ResetFaultBudget()
     {
         faultResumeCount = 0;
+        runFaultResumeCount = 0;
         faultWindowStartedAtMs = 0;
     }
 
     // The window restarts once it lapses, so sparse faults over a long run each get a fresh budget; only a burst, a wedge
-    // that faults again straight away, spends it and lets the run end for real.
+    // that faults again straight away, spends it. The per-run cap still ends a run whose faults keep coming, however far
+    // apart they are.
     private bool TryAutoResumeAfterFault(AutoHuntSession owningSession)
     {
         if (!Plugin.Instance.Configuration.AutoResumeOnFault)
@@ -141,6 +153,12 @@ internal sealed partial class AutoHuntController
             return false;
         }
 
+        if (runFaultResumeCount >= MaxFaultResumesPerRun)
+        {
+            Diag($"Hunt task faulted after {runFaultResumeCount} restarts in this run; not resuming. The run ends.");
+            return false;
+        }
+
         var now = Environment.TickCount64;
         if (now - faultWindowStartedAtMs > FaultResumeWindowMs)
         {
@@ -150,13 +168,14 @@ internal sealed partial class AutoHuntController
 
         if (faultResumeCount >= MaxFaultResumes)
         {
-            Diag($"Hunt task faulted {faultResumeCount} times within {FaultResumeWindowMs / MillisecondsPerMinute} minutes; not resuming. The run ends.");
+            Diag($"Hunt task faulted {faultResumeCount} times within {FaultResumeWindowMs / TimeUnits.MillisecondsPerMinute} minutes; not resuming. The run ends.");
             return false;
         }
 
         faultResumeCount++;
+        runFaultResumeCount++;
         owningSession.ClearFault();
-        Diag($"Hunt task ended on an unexpected fault; auto-resuming (resume {faultResumeCount}/{MaxFaultResumes} in this {FaultResumeWindowMs / MillisecondsPerMinute} minute window).");
+        Diag($"Hunt task ended on an unexpected fault; auto-resuming (resume {faultResumeCount}/{MaxFaultResumes} in this {FaultResumeWindowMs / TimeUnits.MillisecondsPerMinute} minute window, {runFaultResumeCount}/{MaxFaultResumesPerRun} in this run).");
         ECommons.DalamudServices.Svc.Chat.Print($"{AhgConstants.LogPrefix} The hunt stopped on an unexpected error; restarting it ({faultResumeCount}/{MaxFaultResumes}).");
         StartHunt(owningSession);
         return true;

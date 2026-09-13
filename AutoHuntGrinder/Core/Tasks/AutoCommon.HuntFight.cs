@@ -47,7 +47,6 @@ public abstract partial class AutoCommon
 
     private enum MarkFight { Reached, Counted, NotCounted, Lost, Unreachable, KnockedOut, Cancelled }
 
-    // Null means nothing fightable is left in view.
     private async Task<MarkOutcome?> FightVisibleMarks(MarkHuntContext hunt)
     {
         for (var engagement = 1; engagement <= MaxMarkEngagementsPerVisit; engagement++)
@@ -87,7 +86,7 @@ public abstract partial class AutoCommon
     {
         MarkPhase = HuntPhase.Fighting;
         Diag($"{scope}: {hunt.Target.Name} {sighting.DistanceToHitbox:F0}m away at {FormatPosition(sighting.Position)}, {sighting.CurrentHp} hp, fate {sighting.FateId} ({ConditionTag()})");
-        var baselineKilled = ReadMarkProgress(hunt.Bill, hunt.Target, force: true).Killed;
+        var baselineKilled = ReadMarkProgress(hunt, force: true).Killed;
         var approach = await CloseOnMark(hunt, sighting.GameObjectId, scope);
         if (approach != MarkFight.Reached)
         {
@@ -98,7 +97,6 @@ public abstract partial class AutoCommon
         return await EngageMark(hunt, sighting.GameObjectId, baselineKilled, scope);
     }
 
-    // Rides in when the mark is far and mounting is allowed, lands short of it, then walks into reach.
     private async Task<MarkFight> CloseOnMark(MarkHuntContext hunt, ulong markId, string scope)
     {
         var approach = ApproachMeters();
@@ -139,9 +137,8 @@ public abstract partial class AutoCommon
             var stopAt = ride ? MarkLandingMeters : approach;
             var destination = MarkFloorNear(live.Position);
             var legScope = $"{scope}-approach#{leg}";
-            var config = (ride ? rideConfig : walkConfig).WithTolerance(stopAt);
             Diag($"{legScope}: {(ride ? "riding" : "walking")} toward {hunt.Target.Name}, {live.DistanceToHitbox:F0}m out");
-            var operation = new MoveOp(move => move.MoveInZone(destination, config, StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel)));
+            var operation = new MoveOp(move => move.MoveInZone(destination, MovementFor(ride, stopAt), StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel)));
             await RunCancellable(operation, MarkApproachWatchdogMs, legScope, StuckDetector.MoveStallAbort(legScope));
             if (operation.Fault is { } fault)
             {
@@ -188,7 +185,7 @@ public abstract partial class AutoCommon
                     return MarkFight.KnockedOut;
                 }
 
-                var progress = ReadMarkProgress(hunt.Bill, hunt.Target, force: true);
+                var progress = ReadMarkProgress(hunt, force: true);
                 if (KillCounted(progress, baselineKilled))
                 {
                     Diag($"{scope}: the kill counted, {progress.Killed}/{progress.Needed} ({progress.Status})");
@@ -198,13 +195,14 @@ public abstract partial class AutoCommon
 
                 if (!progress.Tracked)
                 {
+                    await ClearMarkAggro(scope);
                     return MarkFight.Lost;
                 }
 
                 var now = Environment.TickCount64;
                 if (now >= deadline)
                 {
-                    Warn($"{scope}: {hunt.Target.Name} still stands after {(hunt.Elite ? EliteMarkFightBudgetMs : DailyMarkFightBudgetMs) / 1000}s; leaving it");
+                    Warn($"{scope}: {hunt.Target.Name} still stands after {(hunt.Elite ? EliteMarkFightBudgetMs : DailyMarkFightBudgetMs) / TimeUnits.MillisecondsPerSecond}s; leaving it");
                     return MarkFight.Unreachable;
                 }
 
@@ -246,7 +244,7 @@ public abstract partial class AutoCommon
                         return MarkFight.Unreachable;
                     }
 
-                    Diag($"{scope}: no damage on {hunt.Target.Name} for {MarkHpStallMs / 1000}s ({ConditionTag()}); restarting the preset ({bounces}/{MaxMarkPresetBounces})");
+                    Diag($"{scope}: no damage on {hunt.Target.Name} for {MarkHpStallMs / TimeUnits.MillisecondsPerSecond}s ({ConditionTag()}); restarting the preset ({bounces}/{MaxMarkPresetBounces})");
                     await BounceHuntPreset();
                     hpChangedAt = Environment.TickCount64;
                 }
@@ -284,10 +282,10 @@ public abstract partial class AutoCommon
     private async Task<MarkFight> SettleMarkKill(MarkHuntContext hunt, int baselineKilled, string scope)
     {
         var counted = await WaitUntilTimed(
-            () => KillCounted(ReadMarkProgress(hunt.Bill, hunt.Target, force: true), baselineKilled),
+            () => KillCounted(ReadMarkProgress(hunt, force: true), baselineKilled),
             MarkKillSettleMs,
             $"{scope}-count");
-        var progress = ReadMarkProgress(hunt.Bill, hunt.Target, force: true);
+        var progress = ReadMarkProgress(hunt, force: true);
         if (counted)
         {
             Diag($"{scope}: {hunt.Target.Name} is down and the kill counted, {progress.Killed}/{progress.Needed}");
@@ -341,7 +339,7 @@ public abstract partial class AutoCommon
 
         if (Svc.Condition[ConditionFlag.InCombat])
         {
-            Diag($"{scope}: still in combat after {MarkAggroClearMs / 1000}s of fighting; carrying on");
+            Diag($"{scope}: still in combat after {MarkAggroClearMs / TimeUnits.MillisecondsPerSecond}s of fighting; carrying on");
         }
     }
 
@@ -358,7 +356,7 @@ public abstract partial class AutoCommon
         var parked = ParkHuntPresetMovement();
         try
         {
-            var operation = new MoveOp(move => move.MoveInZone(destination, walkConfig.WithTolerance(approach), StopWhenMarkWithin(markId, approach, destination, hunt.FightLabel)));
+            var operation = new MoveOp(move => move.MoveInZone(destination, walkMovement.WithTolerance(approach), StopWhenMarkWithin(markId, approach, destination, hunt.FightLabel)));
             await RunCancellable(operation, MarkRepositionWatchdogMs, scope, StuckDetector.MoveStallAbort(scope));
             if (operation.Fault is { } fault)
             {

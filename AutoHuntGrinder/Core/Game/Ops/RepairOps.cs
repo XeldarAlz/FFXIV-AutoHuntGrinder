@@ -23,7 +23,7 @@ internal static unsafe class RepairOps
     // Condition counts 300 per percent, so an intact item reads 30000.
     private const float ConditionPerPercent = 300f;
     private const uint MaxConditionRaw = 30_000;
-    private const float IntactConditionPct = 100f;
+    private const float IntactConditionPercent = 100f;
     // The first 13 equipped slots hold gear; the last is the soul crystal, which never wears.
     private const int EquippedGearSlotCount = 13;
     // Only English menus carry the word; other clients fall back to the first entry.
@@ -51,12 +51,12 @@ internal static unsafe class RepairOps
     private static readonly Vector3 TwinAdderMenderPosition = new(24.826416f, -8f, 93.18677f);
     private static readonly Vector3 ImmortalFlamesMenderPosition = new(32.85266f, 6.999999f, -81.31531f);
 
-    public static float LowestEquippedConditionPct()
+    public static float LowestEquippedConditionPercent()
     {
         var container = EquippedItems();
         if (container is null)
         {
-            return IntactConditionPct;
+            return IntactConditionPercent;
         }
 
         var lowest = MaxConditionRaw;
@@ -76,11 +76,11 @@ internal static unsafe class RepairOps
             }
         }
 
-        return anyWorn ? lowest / ConditionPerPercent : IntactConditionPct;
+        return anyWorn ? lowest / ConditionPerPercent : IntactConditionPercent;
     }
 
-    public static bool NeedsRepair(int thresholdPct)
-        => LowestEquippedConditionPct() <= thresholdPct;
+    public static bool NeedsRepair(int thresholdPercent)
+        => LowestEquippedConditionPercent() <= thresholdPercent;
 
     // Every worn piece names the Dark Matter grade it needs; any higher grade repairs it too.
     public static bool HasDarkMatterForAllEquipped()
@@ -209,7 +209,6 @@ internal static unsafe class RepairOps
         agent->Hide();
     }
 
-    // The custom repair NPC when one is set, otherwise the mender of the player's Grand Company.
     public static RepairMender? ResolveMender(Configuration configuration)
     {
         if (configuration.PreferredRepairNpc is { } custom)
@@ -300,9 +299,10 @@ internal static unsafe class RepairOps
 
     private static bool HasDarkMatterOrBetter(uint requiredDarkMatterId, InventoryManager* inventory)
     {
-        foreach (var grade in Svc.Data.GetExcelSheet<ItemRepairResource>())
+        var grades = Svc.Data.GetExcelSheet<ItemRepairResource>();
+        for (var rowIndex = 0; rowIndex < grades.Count; rowIndex++)
         {
-            var darkMatterId = grade.Item.RowId;
+            var darkMatterId = grades.GetRowAt(rowIndex).Item.RowId;
             if (darkMatterId >= requiredDarkMatterId && inventory->GetInventoryItemCount(darkMatterId) > 0)
             {
                 return true;

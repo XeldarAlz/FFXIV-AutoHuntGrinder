@@ -250,6 +250,51 @@ internal static class RunningPanel
         ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, labelSize.Y + 8f * scale));
 
         queue.Clear();
+        var givenUp = controller.SessionSnapshot?.GivenUpNameIds;
+        var routeAhead = controller.Progress.RouteAhead;
+        if (routeAhead.Length > 0)
+        {
+            FillFromRoute(routeAhead, givenUp);
+        }
+        else
+        {
+            FillByZone(controller.Progress, bills, givenUp);
+        }
+
+        if (queue.Count == 0)
+        {
+            EmptyHint(workload.PickUps > 0 ? Loc.T(L.Run.PickUpFirst) : Loc.T(L.Run.NoMarksLeft));
+            return;
+        }
+
+        var shown = Math.Min(QueueLength, queue.Count);
+        for (var index = 0; index < shown; index++)
+        {
+            DrawQueueRow(queue[index], index == 0);
+        }
+    }
+
+    // The planned route is the order the run works through, and the bills are read live, so a mark that fell since
+    // drops out.
+    private static void FillFromRoute(ReadOnlySpan<HuntStop> routeAhead, HashSet<uint>? givenUp)
+    {
+        for (var stopIndex = 0; stopIndex < routeAhead.Length && queue.Count < QueueLength; stopIndex++)
+        {
+            var stop = routeAhead[stopIndex];
+            var markIndex = stop.Bill.MarkIndex;
+            if (IsGivenUp(givenUp, stop.Target.NameId)
+                || !MarkBillReader.TryFindTarget(markIndex, stop.Target.TargetRowId, out var target)
+                || target.Done)
+            {
+                continue;
+            }
+
+            queue.Add(new QueueEntry(markIndex, target, MarkBillReader.Status(markIndex) == BillStatus.Stale));
+        }
+    }
+
+    private static void FillByZone(HuntProgress progress, IReadOnlyList<HuntBill> bills, HashSet<uint>? givenUp)
+    {
         for (var billIndex = 0; billIndex < bills.Count; billIndex++)
         {
             var markIndex = bills[billIndex].MarkIndex;
@@ -263,7 +308,7 @@ internal static class RunningPanel
             for (var targetIndex = 0; targetIndex < targets.Length; targetIndex++)
             {
                 var target = targets[targetIndex];
-                if (target.Done || !RoutePlanner.CanHunt(target))
+                if (target.Done || !RoutePlanner.CanHunt(target) || IsGivenUp(givenUp, target.NameId))
                 {
                     continue;
                 }
@@ -272,20 +317,11 @@ internal static class RunningPanel
             }
         }
 
-        if (queue.Count == 0)
-        {
-            EmptyHint(workload.PickUps > 0 ? Loc.T(L.Run.PickUpFirst) : Loc.T(L.Run.NoMarksLeft));
-            return;
-        }
-
         queue.Sort(byZone);
-        BringCurrentForward(controller.Progress);
-        var shown = Math.Min(QueueLength, queue.Count);
-        for (var index = 0; index < shown; index++)
-        {
-            DrawQueueRow(queue[index], index == 0);
-        }
+        BringCurrentForward(progress);
     }
+
+    private static bool IsGivenUp(HashSet<uint>? givenUp, uint nameId) => givenUp is not null && givenUp.Contains(nameId);
 
     private static void BringCurrentForward(HuntProgress progress)
     {

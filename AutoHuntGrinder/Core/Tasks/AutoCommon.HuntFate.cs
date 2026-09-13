@@ -21,8 +21,6 @@ public abstract partial class AutoCommon
 
     private readonly record struct MarkFateState(FateState State, Vector3 Location, float Radius, byte Progress);
 
-    // Waits near where the FATE starts, heads in once it runs, syncs down when over its level and fights the mark inside
-    // it. A FATE that ends before the kill counts is waited out again until the budget runs out.
     private async Task<MarkOutcome> HuntFateMark(MarkHuntContext hunt)
     {
         if (!await EnterMarkTerritory(hunt))
@@ -55,7 +53,6 @@ public abstract partial class AutoCommon
         }
     }
 
-    // Null once the FATE runs; anything else ends the hunt, including the budget running out.
     private async Task<MarkOutcome?> WaitForMarkFate(MarkHuntContext hunt)
     {
         var label = $"Waiting for {hunt.Fate.Name} to start";
@@ -77,7 +74,7 @@ public abstract partial class AutoCommon
             if (!announced)
             {
                 announced = true;
-                Diag($"Fate: waiting up to {MarkFateWaitBudgetMs / 60_000} minutes for {hunt.Fate.Name} ({hunt.FateId}), {(known ? $"now {fate.State}" : "not up")}");
+                Diag($"Fate: waiting up to {MarkFateWaitBudgetMs / TimeUnits.MillisecondsPerMinute} minutes for {hunt.Fate.Name} ({hunt.FateId}), {(known ? $"now {fate.State}" : "not up")}");
             }
 
             MarkPhase = HuntPhase.Searching;
@@ -91,7 +88,6 @@ public abstract partial class AutoCommon
         }
     }
 
-    // Null when the FATE ended without the kill counting.
     private async Task<MarkOutcome?> FightMarkFate(MarkHuntContext hunt)
     {
         var label = $"Looking for {hunt.Target.Name} in {hunt.Fate.Name}";

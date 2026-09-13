@@ -26,6 +26,22 @@ internal static unsafe class MarkBillReader
     public static ReadOnlySpan<HuntTarget> Targets(byte markIndex)
         => new(targets, markIndex * MaxTargetsPerBill, targetCounts[markIndex]);
 
+    public static bool TryFindTarget(byte markIndex, uint targetRowId, out HuntTarget target)
+    {
+        var list = Targets(markIndex);
+        for (var index = 0; index < list.Length; index++)
+        {
+            if (list[index].TargetRowId == targetRowId)
+            {
+                target = list[index];
+                return true;
+            }
+        }
+
+        target = default;
+        return false;
+    }
+
     public static (int Killed, int Needed) Kills(byte markIndex)
     {
         var list = Targets(markIndex);

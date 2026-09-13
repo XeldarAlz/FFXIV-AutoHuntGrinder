@@ -74,14 +74,14 @@ public abstract partial class AutoCommon
             await DelayMs(MarkRevivePollMs);
         }
 
-        Warn($"Hunt: the return to the home point did not complete within {MarkReviveTransitionMs / 1000}s");
+        Warn($"Hunt: the return to the home point did not complete within {MarkReviveTransitionMs / TimeUnits.MillisecondsPerSecond}s");
         return !IsMarkKnockedOut();
     }
 
     private async Task<bool> WaitForMarkRaise()
     {
         Status = "Knocked out, waiting for a raise";
-        Diag($"Hunt: knocked out in a party; waiting up to {MarkRaiseWaitMs / 1000}s for a raise");
+        Diag($"Hunt: knocked out in a party; waiting up to {MarkRaiseWaitMs / TimeUnits.MillisecondsPerSecond}s for a raise");
         var deadline = Environment.TickCount64 + MarkRaiseWaitMs;
         while (Environment.TickCount64 < deadline)
         {

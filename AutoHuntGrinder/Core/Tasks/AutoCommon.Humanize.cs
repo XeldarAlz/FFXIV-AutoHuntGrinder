@@ -18,7 +18,6 @@ public abstract partial class AutoCommon
     private const int HumanizeMinHopBudgetMs = 4_000;
     private const int HumanizeRouteQueryTimeoutMs = 5_000;
     private const int HumanizeCandidateAttempts = 8;
-    private const int HumanizeMillisecondsPerSecond = 1_000;
     private const float HumanizeArrivalToleranceMeters = 4f;
     private const float HumanizeCandidateHalfExtentXZ = 10f;
     private const float HumanizeCandidateHalfExtentY = 5f;
@@ -28,13 +27,12 @@ public abstract partial class AutoCommon
     private const float HumanizePartialRouteGapMeters = 0.75f;
     private const float HumanizeMaxDetourRatio = 2f;
 
-    // Teleports to the city and wanders between random reachable points until the break is over. True once the character
-    // reached the city, so a break that never started is not counted as taken.
+    // A break that never reached the city is not counted as taken.
     protected async Task<bool> TakeCityBreak(uint cityTerritoryId, int durationMs)
     {
         var cityName = TerritoryNames.Of(cityTerritoryId);
-        Diag($"Humanize: {durationMs / HumanizeMillisecondsPerSecond}s break in {cityName} ({cityTerritoryId})");
-        Svc.Chat.Print($"{AhgConstants.LogPrefix} Humanize: taking a ~{Math.Max(1, durationMs / UpkeepMillisecondsPerMinute)}m break in {cityName}.");
+        Diag($"Humanize: {durationMs / TimeUnits.MillisecondsPerSecond}s break in {cityName} ({cityTerritoryId})");
+        Svc.Chat.Print($"{AhgConstants.LogPrefix} Humanize: taking a ~{Math.Max(1, durationMs / TimeUnits.MillisecondsPerMinute)}m break in {cityName}.");
 
         if (Svc.ClientState.TerritoryType != cityTerritoryId)
         {
@@ -103,7 +101,7 @@ public abstract partial class AutoCommon
             }
 
             walks++;
-            Status = $"Wandering in {cityName} (~{(deadline - Environment.TickCount64) / HumanizeMillisecondsPerSecond}s left)";
+            Status = $"Wandering in {cityName} (~{(deadline - Environment.TickCount64) / TimeUnits.MillisecondsPerSecond}s left)";
             Diag($"Humanize walk {walks}: {Vector3.Distance(from, spot):F0}m to {spot}");
             var scope = $"humanize-walk#{walks}";
             var move = new MoveOp(operation => operation.MoveInZone(
@@ -216,8 +214,8 @@ public abstract partial class AutoCommon
     private static int RollWanderPauseMs()
     {
         var configuration = Plugin.Instance.Configuration;
-        var shortest = Math.Max(0, configuration.HumanizerPauseMinSec);
-        var longest = Math.Max(shortest, configuration.HumanizerPauseMaxSec);
-        return Random.Shared.Next(shortest, longest + 1) * HumanizeMillisecondsPerSecond;
+        var shortest = Math.Max(0, configuration.HumanizerPauseMinSeconds);
+        var longest = Math.Max(shortest, configuration.HumanizerPauseMaxSeconds);
+        return Random.Shared.Next(shortest, longest + 1) * TimeUnits.MillisecondsPerSecond;
     }
 }

@@ -43,16 +43,13 @@ public abstract partial class AutoCommon
     private const float UnstickStepToleranceMeters = 0.5f;
     private const int UnstickStepWatchdogMs = 8_000;
 
-    private static readonly MovementConfig rideConfig = MovementConfig.Everything.WithOptions(MovementOptions.Mount | MovementOptions.Fly);
-    private static readonly MovementConfig walkConfig = MovementConfig.Default;
+    private static readonly MovementConfig rideMovement = MovementConfig.Everything.WithOptions(MovementOptions.Mount | MovementOptions.Fly);
+    private static readonly MovementConfig walkMovement = MovementConfig.Default;
 
     private enum ZoneTravelResult { Arrived, Failed, LeftZone }
 
     private enum LegOutcome { EndedShort, Stalled, Faulted, MountFailed, Remount }
 
-    // Teleports to the attuned aetheryte nearest the spot when in another zone or far away, rides a city aethernet when
-    // that beats walking, mounts and flies where the zone allows it, walks otherwise, and works through stalls. The
-    // character stays mounted when it rode. False when the spot cannot be reached or the run was cancelled.
     protected async Task<bool> TravelTo(uint territoryId, Vector3 destination, float arriveWithin)
     {
         var zoneName = TerritoryNames.Of(territoryId);
@@ -165,7 +162,7 @@ public abstract partial class AutoCommon
             var remainingMs = deadline - Environment.TickCount64;
             if (remainingMs <= 0)
             {
-                Warn($"Travel: ran out of time ({budgetMs / 1000}s) {DistanceTo(target):F0}m short of the spot in {zoneName}");
+                Warn($"Travel: ran out of time ({budgetMs / TimeUnits.MillisecondsPerSecond}s) {DistanceTo(target):F0}m short of the spot in {zoneName}");
                 return ZoneTravelResult.Failed;
             }
 
@@ -214,7 +211,6 @@ public abstract partial class AutoCommon
     {
         var ride = mountingAllowed && FreeToMount() && (Svc.Condition[ConditionFlag.Mounted] || DistanceTo(target) > MountMinMeters);
         var canRemount = mountingAllowed && !ride;
-        var config = (ride ? rideConfig : walkConfig).WithTolerance(arriveWithin);
         var label = ride ? $"Riding to the spot in {zoneName}" : $"Walking to the spot in {zoneName}";
         var remount = false;
 
@@ -256,7 +252,7 @@ public abstract partial class AutoCommon
         }
 
         Diag($"{scope}: {(ride ? "mounted" : "on foot")}, flight {(ECommons.GameHelpers.Player.CanFly ? "available" : "unavailable")}, {DistanceTo(target):F0}m to go");
-        var operation = new MoveOp(move => move.MoveInZone(target, config, StopCondition));
+        var operation = new MoveOp(move => move.MoveInZone(target, MovementFor(ride, arriveWithin), StopCondition));
         var completed = await RunCancellable(operation, watchdogMs, scope, AbortIfStalled);
         if (remount)
         {
@@ -392,7 +388,7 @@ public abstract partial class AutoCommon
         }
 
         var stepScope = $"{scope}-step";
-        var operation = new MoveOp(move => move.MoveInZone(step, walkConfig.WithTolerance(UnstickStepToleranceMeters), null));
+        var operation = new MoveOp(move => move.MoveInZone(step, walkMovement.WithTolerance(UnstickStepToleranceMeters), null));
         await RunCancellable(operation, UnstickStepWatchdogMs, stepScope, StuckDetector.MoveStallAbort(stepScope));
     }
 
@@ -434,9 +430,12 @@ public abstract partial class AutoCommon
     private static int TravelBudgetMs(Vector3 target)
     {
         var distance = Svc.Objects.LocalPlayer is { } player ? Vector3.Distance(player.Position, target) : 0f;
-        var travelMs = distance / TravelMinSpeedMetersPerSecond * 1000f;
+        var travelMs = distance / TravelMinSpeedMetersPerSecond * TimeUnits.MillisecondsPerSecond;
         return (int)Math.Min(TravelMaxBudgetMs, TravelBaseBudgetMs + travelMs);
     }
+
+    private static MovementConfig MovementFor(bool ride, float tolerance)
+        => (ride ? rideMovement : walkMovement).WithTolerance(tolerance);
 
     private static bool TerritoryAllowsMount(uint territoryId)
         => Svc.Data.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>().GetRowOrDefault(territoryId)?.Mount ?? false;

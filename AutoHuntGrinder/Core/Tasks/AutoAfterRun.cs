@@ -25,7 +25,7 @@ public sealed class AutoAfterRun(AfterRunAction action) : AutoCommon
         {
             if (!CancelToken.IsCancellationRequested)
             {
-                Warn($"After-run {action} skipped: no safe moment (combat, casting, or a zone change) within {ReadyWaitMs / 1000}s.");
+                Warn($"After-run {action} skipped: no safe moment (combat, casting, or a zone change) within {ReadyWaitMs / TimeUnits.MillisecondsPerSecond}s.");
             }
 
             return;

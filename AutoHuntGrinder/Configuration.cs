@@ -1,11 +1,15 @@
 using Dalamud.Configuration;
 using ECommons.Throttlers;
+using Newtonsoft.Json;
 
 namespace AutoHuntGrinder;
 
 [Serializable]
 public sealed partial class Configuration : IPluginConfiguration
 {
+    [JsonIgnore]
+    private bool savePending;
+
     public int Version { get; set; }
 
     public bool AutoShowOnLogin { get; set; } = false;
@@ -20,11 +24,31 @@ public sealed partial class Configuration : IPluginConfiguration
 
     public bool AutoPauseInContent { get; set; } = true;
 
-    public void Save() => Plugin.PluginInterface.SavePluginConfig(this);
+    public void Save()
+    {
+        savePending = false;
+        Plugin.PluginInterface.SavePluginConfig(this);
+    }
 
+    // A slider or a text box changes on every frame it is edited, so the throttle drops most calls; the change stays
+    // pending, and FlushPendingSave writes the last one once the throttle window has passed.
     public void SaveDebounced()
     {
-        if (EzThrottler.Throttle(Core.AhgConstants.ThrottleKeys.Save, Core.AhgConstants.SaveThrottleMs))
+        savePending = true;
+        FlushPendingSave();
+    }
+
+    public void FlushPendingSave()
+    {
+        if (savePending && EzThrottler.Throttle(Core.AhgConstants.ThrottleKeys.Save, Core.AhgConstants.SaveThrottleMs))
+        {
+            Save();
+        }
+    }
+
+    public void SaveIfPending()
+    {
+        if (savePending)
         {
             Save();
         }
