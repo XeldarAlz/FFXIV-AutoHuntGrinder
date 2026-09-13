@@ -17,8 +17,6 @@
 
 ---
 
-> **Early development.** The first release is not out yet. The window, the bill picker and the live bill reader are in place; the automation that picks up bills and hunts the marks is being built now.
-
 ## What it does
 
 Lists every daily and weekly hunt bill from A Realm Reborn through Dawntrail in one window. Tick the bills you want and press **Start**: the plugin travels to each hunt board you still need a bill from, accepts it, then teleports and flies to every mark on your bills, fights it, and moves on until each bill is done.
@@ -27,10 +25,18 @@ Lists every daily and weekly hunt bill from A Realm Reborn through Dawntrail in 
 
 - **Every hunt board**: Grand Company, clan and guildship bills from ARR through DT, dailies and weekly Elite Marks, with boards you haven't unlocked yet greyed out.
 - **Live bill progress**: reads the bills you hold and your kill counts straight from the game, so the window always matches what the game shows.
-- **Board pickup**: walks up to the hunt board and accepts any selected bill you aren't holding yet.
+- **Board pickup**: walks up to the hunt board and accepts any selected bill you aren't holding yet, and finishes an older bill before it takes the new one.
 - **Route planning**: groups marks by zone, so a run teleports as little as possible.
-- **Mark finder**: flies to each mark's known spawn areas and sweeps them until it shows up.
+- **Mark finder**: flies to each mark's known spawn points and sweeps them until it shows up, and patrols elite marks for a while before moving on.
+- **Hands-off combat**: fights each mark with a bundled combat preset that never pulls other mobs, and only counts a kill once the bill does.
+- **Recovery**: gets back up after a death and tries the mark again a few times; re-paths, jumps, or teleports out when it gets stuck.
+- **After-run action**: stay logged in, log out, or close the game once every bill is done.
+- **Auto-repair**: Dark Matter first, Grand Company mender as fallback.
+- **Auto-consume**: keeps food and medicine buffs up between marks, HQ first.
+- **Humanizer**: takes random city breaks between marks so long sessions look less mechanical.
 - **Pause & resume**: park a run without losing your progress, and auto-pause while you're in a duty.
+- **Party invites**: auto-declines incoming invites during a run after a random delay, with an optional reply message.
+- **GM alert**: stops the bot when a GM is near, with optional toast, beeps, or custom commands.
 - **History**: every run recorded with bills cleared, marks hunted, and seals or nuts earned.
 
 ## Install
@@ -57,6 +63,7 @@ The plugin needs a few helpers for movement and combat to be installed and loade
 | `/ahg about` | Open the About page |
 | `/ahg pause` | Pause or resume the current run |
 | `/ahg target` | Log targeted NPC's BaseId (debug helper) |
+| `/ahg goto <territory> <x> <y> <z>` | Travel to a point, `/ahg goto stop` cancels (debug helper) |
 
 ## Languages
 
