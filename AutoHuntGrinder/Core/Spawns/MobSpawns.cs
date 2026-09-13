@@ -9,22 +9,22 @@ internal static class MobSpawns
 
     private const int CoordinatesPerPoint = 2;
 
-    private static SpawnPoint[]? points;
+    private static SpawnPoint[]? decodedPoints;
 
     public static ReadOnlySpan<ushort> NameIds => MobSpawnTable.NameIds;
 
-    private static SpawnPoint[] Points => points ??= Decode();
+    private static SpawnPoint[] Points => decodedPoints ??= Decode();
 
-    public static bool TryGet(uint nameId, uint territoryId, out ReadOnlySpan<SpawnPoint> found)
+    public static bool TryGet(uint nameId, uint territoryId, out ReadOnlySpan<SpawnPoint> points)
     {
         var entry = EntryOf(IndexOf(nameId), territoryId);
         if (entry == NotFound)
         {
-            found = default;
+            points = default;
             return false;
         }
 
-        found = new ReadOnlySpan<SpawnPoint>(Points, MobSpawnTable.EntryPointStarts[entry], MobSpawnTable.EntryPointCounts[entry]);
+        points = new ReadOnlySpan<SpawnPoint>(Points, MobSpawnTable.EntryPointStarts[entry], MobSpawnTable.EntryPointCounts[entry]);
         return true;
     }
 
