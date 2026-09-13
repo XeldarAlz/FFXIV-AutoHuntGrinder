@@ -1,6 +1,6 @@
 namespace AutoHuntGrinder.Core.Localization;
 
-internal static class L
+internal static partial class L
 {
     internal static class Common
     {

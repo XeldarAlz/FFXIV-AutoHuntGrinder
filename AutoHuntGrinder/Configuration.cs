@@ -4,7 +4,7 @@ using ECommons.Throttlers;
 namespace AutoHuntGrinder;
 
 [Serializable]
-public sealed class Configuration : IPluginConfiguration
+public sealed partial class Configuration : IPluginConfiguration
 {
     public int Version { get; set; }
 
