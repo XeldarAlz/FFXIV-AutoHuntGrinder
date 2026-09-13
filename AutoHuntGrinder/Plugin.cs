@@ -16,11 +16,15 @@ using ECommons;
 using ECommons.DalamudServices;
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace AutoHuntGrinder;
 
 public sealed class Plugin : IDalamudPlugin
 {
+    private const string GotoSubcommand = "goto";
+    private const string NavmeshIpcProviderMarker = "Navmesh.IPCProvider";
+
     [PluginService]
     internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
 
@@ -45,6 +49,7 @@ public sealed class Plugin : IDalamudPlugin
 
         ECommonsMain.Init(PluginInterface, this);
         CLibMain.Init(PluginInterface, this, CLibModule.Automation);
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         History = new RunHistory();
@@ -76,6 +81,8 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        TaskScheduler.UnobservedTaskException -= OnUnobservedTaskException;
+
         PluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfigUi;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
@@ -137,10 +144,36 @@ public sealed class Plugin : IDalamudPlugin
         {
             TargetDumper.Dump();
         }
+        else if (IsGotoCommand(trimmed))
+        {
+            AutoGoto.HandleCommand(trimmed[GotoSubcommand.Length..].Trim(), Controller.Running);
+        }
         else
         {
             ToggleMainUi();
         }
+    }
+
+    private static bool IsGotoCommand(string arguments)
+        => arguments.StartsWith(GotoSubcommand, StringComparison.OrdinalIgnoreCase)
+        && (arguments.Length == GotoSubcommand.Length || char.IsWhiteSpace(arguments[GotoSubcommand.Length]));
+
+    // The navmesh plugin answers pathfind IPC on fire-and-forget tasks this plugin never gets a handle to. When one
+    // faults, typically a query issued while the zone mesh is still building, the finalizer would rethrow it as noise.
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs eventArgs)
+    {
+        if (eventArgs.Observed)
+        {
+            return;
+        }
+
+        if (!eventArgs.Exception.ToString().Contains(NavmeshIpcProviderMarker, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        eventArgs.SetObserved();
+        Svc.Log.Debug($"{AhgConstants.LogPrefix} Observed a navmesh IPC task fault: {eventArgs.Exception.GetBaseException().Message}");
     }
 
     private void InitializeLocalization()
