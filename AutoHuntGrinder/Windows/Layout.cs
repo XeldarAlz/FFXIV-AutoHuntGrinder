@@ -17,7 +17,7 @@ internal static class Layout
     public const float LibraryHeaderHeight = 36f;
     public const float ChipHeight = 32f;
 
-    public const float HeroCardHeight = 134f;
+    public const float HeroCardHeight = 142f;
     public const float StatTileHeight = 66f;
     public const float QueueRowHeight = 54f;
     public const float QueueBarHeight = 5f;

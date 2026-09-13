@@ -85,6 +85,7 @@ internal static class ReadyState
         HuntPhase.Travelling => Loc.T(L.Run.PhaseTravelling),
         HuntPhase.Searching  => Loc.T(L.Run.PhaseSearching),
         HuntPhase.Fighting   => Loc.T(L.Run.PhaseFighting),
+        HuntPhase.Upkeep     => Loc.T(L.Progress.PhaseUpkeep),
         HuntPhase.Finishing  => Loc.T(L.Run.PhaseFinishing),
         _                    => Loc.T(L.Run.PhaseStandingBy),
     };

@@ -37,6 +37,9 @@ internal static class RoutePlanner
     // Marks that still need kills but can be neither searched for nor waited on: no spawn points and no FATE.
     public static HuntStop[] Unsupported(IReadOnlyList<HuntBill> bills) => [.. Collect(bills, supported: false)];
 
+    public static bool CanHunt(in HuntTarget target)
+        => MarkSpawns.IsSupported(target.TargetRowId) || (target.TerritoryId != 0 && MarkFates.FateIdOf(target.TargetRowId) != 0);
+
     private static List<HuntStop> Collect(IReadOnlyList<HuntBill> bills, bool supported)
     {
         MarkBillReader.Refresh(force: true);
@@ -59,14 +62,13 @@ internal static class RoutePlanner
                     continue;
                 }
 
-                var fateId = MarkFates.FateIdOf(target.TargetRowId);
-                var hasSpawns = MarkSpawns.TryGet(target.TargetRowId, out var spawnTerritoryId, out _);
-                var isSupported = hasSpawns || (fateId != 0 && target.TerritoryId != 0);
-                if (isSupported != supported)
+                if (CanHunt(target) != supported)
                 {
                     continue;
                 }
 
+                var fateId = MarkFates.FateIdOf(target.TargetRowId);
+                var hasSpawns = MarkSpawns.TryGet(target.TargetRowId, out var spawnTerritoryId, out _);
                 stops.Add(new HuntStop(bill, target, hasSpawns ? spawnTerritoryId : target.TerritoryId, fateId));
             }
         }

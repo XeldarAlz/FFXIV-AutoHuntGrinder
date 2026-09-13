@@ -13,12 +13,15 @@ internal sealed partial class AutoHuntController
 
     private void OnHuntEnded(AutoHuntSession owningSession)
     {
-        if (ReferenceEquals(session, owningSession)
-            && owningSession.EndedWithFault
-            && !owningSession.CompletedByStopCondition
-            && TryAutoResumeAfterFault(owningSession))
+        var faulted = ReferenceEquals(session, owningSession) && owningSession.EndedWithFault;
+        if (faulted && !owningSession.CompletedByStopCondition && TryAutoResumeAfterFault(owningSession))
         {
             return;
+        }
+
+        if (faulted)
+        {
+            ECommons.DalamudServices.Svc.Chat.PrintError($"{AhgConstants.LogPrefix} The hunt stopped on an unexpected error. The log has the details.");
         }
 
         EndRun(owningSession);
@@ -35,7 +38,7 @@ internal sealed partial class AutoHuntController
 
         session = null;
         activeBills = [];
-        Phase = HuntPhase.Idle;
+        progress.Reset();
         MaybeRunAfterAction(owningSession);
     }
 
@@ -67,12 +70,12 @@ internal sealed partial class AutoHuntController
         }
 
         Diag($"Run completed by its stop condition; starting after-run action {action}.");
-        Phase = HuntPhase.Finishing;
+        progress.SetPhase(HuntPhase.Finishing);
         AutoCommon task = action == AfterRunAction.ReturnToInn ? new AutoReturnToInn() : new AutoAfterRun(action);
         RunTask(task, () =>
         {
             Diag($"After-run action {action} finished.");
-            Phase = HuntPhase.Idle;
+            progress.SetPhase(HuntPhase.Idle);
         });
     }
 

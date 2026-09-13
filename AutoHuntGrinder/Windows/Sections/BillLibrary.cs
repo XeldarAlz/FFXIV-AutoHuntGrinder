@@ -321,6 +321,17 @@ internal static class BillLibrary
                 var line = Loc.T(L.Hunt.TooltipTarget, target.Name, target.Killed, target.Needed, target.ZoneName);
                 Tooltip.Text(line, target.Done ? Styling.AccentMint : Styling.TextSecondary);
             }
+
+            for (var index = 0; index < targets.Length; index++)
+            {
+                var target = targets[index];
+                if (target.Done || RoutePlanner.CanHunt(target))
+                {
+                    continue;
+                }
+
+                Tooltip.Text(Loc.T(L.Progress.NoSpawnData, target.Name), Styling.AccentAmber);
+            }
         }
     }
 

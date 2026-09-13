@@ -6,6 +6,8 @@ namespace AutoHuntGrinder.Core.Tasks;
 
 internal sealed partial class AutoHuntController
 {
+    private readonly HuntProgress progress = new();
+
     private AutoHuntSession? session;
     private HuntBill[] activeBills = [];
     private AutoCommon? currentTask;
@@ -19,7 +21,9 @@ internal sealed partial class AutoHuntController
         _                     => Svc.Automation.CurrentTask?.Status ?? "Idle",
     };
 
-    public HuntPhase Phase { get; private set; } = HuntPhase.Idle;
+    public HuntPhase Phase => progress.Phase;
+
+    public HuntProgress Progress => progress;
 
     public AutoHuntSession? SessionSnapshot => session;
 
@@ -61,7 +65,7 @@ internal sealed partial class AutoHuntController
         FinalizeRun(ending);
         session = null;
         activeBills = [];
-        Phase = HuntPhase.Idle;
+        progress.Reset();
         if (ending is not null)
         {
             Diag("Stop requested; session cleared.");
@@ -70,8 +74,9 @@ internal sealed partial class AutoHuntController
 
     private void StartHunt(AutoHuntSession owningSession)
     {
-        Phase = HuntPhase.Reading;
-        RunTask(new AutoHunt(activeBills), () => OnHuntEnded(owningSession));
+        progress.Reset();
+        progress.SetPhase(HuntPhase.Reading);
+        RunTask(new AutoHunt(activeBills, owningSession, progress), () => OnHuntEnded(owningSession));
     }
 
     private void RunTask(AutoCommon task, Action onCompleted)
@@ -91,4 +96,4 @@ internal sealed partial class AutoHuntController
     }
 }
 
-internal enum HuntPhase { Idle, Reading, PickingUp, Travelling, Searching, Fighting, Finishing, Paused }
+internal enum HuntPhase { Idle, Reading, PickingUp, Travelling, Searching, Fighting, Upkeep, Finishing, Paused }

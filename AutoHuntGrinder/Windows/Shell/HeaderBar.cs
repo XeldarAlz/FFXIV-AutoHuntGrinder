@@ -192,11 +192,14 @@ internal static class HeaderBar
         }
 
         var phase = controller.Paused ? Loc.T(L.Run.PhasePaused) : ReadyState.PhaseLabel(controller.Phase);
-        var text = $"{phase}  ·  {controller.Status}";
+        var detail = CurrentMark.TryGet(controller, out var mark) ? mark.Line : controller.Status;
         using (Fonts.PushCaption())
         {
-            var textSize = TextDraw.Measure(text);
-            TextDraw.At(TextDraw.Truncate(text, textWidth), new Vector2(x, midY - textSize.Y * 0.5f), Styling.TextSecondary);
+            var phaseText = TextDraw.Truncate(phase, textWidth);
+            var phaseSize = TextDraw.Measure(phaseText);
+            var textY = midY - phaseSize.Y * 0.5f;
+            TextDraw.At(phaseText, new Vector2(x, textY), Styling.TextSecondary);
+            TextDraw.Trailing(detail, x + phaseSize.X, x + textWidth, textY, Styling.TextSecondary);
         }
     }
 }

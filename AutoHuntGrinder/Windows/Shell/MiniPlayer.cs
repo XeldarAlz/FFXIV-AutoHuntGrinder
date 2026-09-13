@@ -69,7 +69,8 @@ internal static class MiniPlayer
         var gap = 2f * scale;
         var top = midY - (phaseSize.Y + gap + lineHeight) * 0.5f;
         TextDraw.SmallCaps(phase, new Vector2(textX, top), info.AccentSoft);
-        TextDraw.At(TextDraw.Truncate(controller.Status, barX - 16f * scale - textX), new Vector2(textX, top + phaseSize.Y + gap), Styling.TextStrong);
+        var detail = CurrentMark.TryGet(controller, out var mark) ? mark.Line : controller.Status;
+        TextDraw.At(TextDraw.Truncate(detail, barX - 16f * scale - textX), new Vector2(textX, top + phaseSize.Y + gap), Styling.TextStrong);
 
         var resumeBlocked = controller.Paused && controller.PauseReason == PauseReason.InContent;
         ImGui.SetCursorScreenPos(new Vector2(end.X - padX - buttonSize * 2f - ButtonGap * scale, midY - buttonSize * 0.5f));

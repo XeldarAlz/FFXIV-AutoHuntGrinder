@@ -42,7 +42,7 @@ internal sealed partial class AutoHuntController
 
         var pausing = session!;
         PauseReason = reason;
-        Phase = HuntPhase.Paused;
+        progress.SetPhase(HuntPhase.Paused);
         // Resume re-baselines the session, so progress up to this moment has to be credited now.
         pausing.Sample();
         pausing.BeginPause();

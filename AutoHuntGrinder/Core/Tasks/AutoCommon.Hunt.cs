@@ -32,7 +32,27 @@ public abstract partial class AutoCommon
 
     private enum MarkLeg { Arrived, Sighted, Failed }
 
-    internal HuntPhase MarkPhase { get; private set; } = HuntPhase.Idle;
+    private HuntPhase markPhase = HuntPhase.Idle;
+
+    internal HuntPhase MarkPhase
+    {
+        get => markPhase;
+        private set
+        {
+            if (markPhase == value)
+            {
+                return;
+            }
+
+            markPhase = value;
+            OnMarkPhaseChanged(value);
+        }
+    }
+
+    // Lets a run loop surface the hunt's phase the moment it changes instead of polling for it.
+    private protected virtual void OnMarkPhaseChanged(HuntPhase phase)
+    {
+    }
 
     // Travels to the mark's territory, sweeps its spawn points nearest first (or waits out its FATE), fights every copy it
     // finds and returns once the bill shows the target done, the budget runs out, or the knockout cap is reached.

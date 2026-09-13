@@ -8,6 +8,8 @@ namespace AutoHuntGrinder.Windows;
 
 internal static class TextDraw
 {
+    public const string Separator = "  ·  ";
+
     private const string Ellipsis = "…";
 
     public static string Upper(string text) => Loc.Upper(text);
@@ -94,6 +96,19 @@ internal static class TextDraw
         }
 
         return text[..low] + Ellipsis;
+    }
+
+    // Continues a line already drawn up to x: the separator, then as much of the text as fits before rightX.
+    public static void Trailing(string text, float x, float rightX, float y, Vector4 color)
+    {
+        var separatorWidth = Measure(Separator).X;
+        if (string.IsNullOrWhiteSpace(text) || rightX - x <= separatorWidth)
+        {
+            return;
+        }
+
+        At(Separator, new Vector2(x, y), color);
+        At(Truncate(text, rightX - x - separatorWidth), new Vector2(x + separatorWidth, y), color);
     }
 
     public static void SmallCaps(string label, Vector2 pos, Vector4 color)

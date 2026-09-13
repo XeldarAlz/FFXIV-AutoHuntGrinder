@@ -21,7 +21,7 @@ public abstract partial class AutoCommon
 
     // Solo, it answers the return prompt straight away; in a party it first gives a raise a while to arrive. True once the
     // character stands again, wherever that is; the hunt travels back from there.
-    private async Task<bool> RecoverFromMarkKnockout()
+    private protected async Task<bool> RecoverFromMarkKnockout()
     {
         BossModIPC.Instance.ClearActive();
         NavmeshIPC.Instance.Stop();

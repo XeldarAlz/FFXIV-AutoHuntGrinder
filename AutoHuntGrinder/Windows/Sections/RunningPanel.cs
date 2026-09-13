@@ -22,7 +22,7 @@ internal static class RunningPanel
     private static uint cachedTerritoryId = uint.MaxValue;
     private static string cachedZoneName = string.Empty;
 
-    private readonly record struct QueueEntry(HuntTarget Target, bool Stale);
+    private readonly record struct QueueEntry(byte MarkIndex, HuntTarget Target, bool Stale);
 
     public static void Draw(AutoHuntController controller)
     {
@@ -39,7 +39,7 @@ internal static class RunningPanel
         DrawStatTiles(controller);
 
         Styling.VSpace(10f);
-        DrawQueue(bills, workload);
+        DrawQueue(controller, bills, workload);
     }
 
     private static void DrawHeaderStrip(int billCount, Vector4 accent, Vector4 accentSoft, bool paused)
@@ -95,11 +95,9 @@ internal static class RunningPanel
         var y = origin.Y + 16f * scale;
 
         y += DrawPhaseChip(columnX, y, label, accent, accentSoft) + 10f * scale;
-
-        var status = TextDraw.Truncate(string.IsNullOrWhiteSpace(controller.Status) ? Loc.T(L.Common.Working) : controller.Status, columnWidth);
-        var statusSize = TextDraw.Measure(status);
-        TextDraw.At(status, new Vector2(columnX, y), Styling.TextSecondary);
-        y += statusSize.Y + 12f * scale;
+        y = CurrentMark.TryGet(controller, out var mark)
+            ? DrawMark(mark, controller.Status, columnX, columnWidth, y, accentSoft)
+            : DrawStatus(controller.Status, columnX, columnWidth, y);
 
         var barHeight = 8f * scale;
         var barOrigin = new Vector2(columnX, y);
@@ -124,6 +122,32 @@ internal static class RunningPanel
         }
 
         ImGui.Dummy(size);
+    }
+
+    private static float DrawStatus(string status, float x, float width, float y)
+    {
+        var text = TextDraw.Truncate(string.IsNullOrWhiteSpace(status) ? Loc.T(L.Common.Working) : status, width);
+        TextDraw.At(text, new Vector2(x, y), Styling.TextSecondary);
+        return y + ImGui.GetTextLineHeight() + 12f * ImGuiHelpers.GlobalScale;
+    }
+
+    private static float DrawMark(in CurrentMark.View mark, string status, float x, float width, float y, Vector4 accentSoft)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var killsWidth = TextDraw.Measure(mark.Kills).X;
+        TextDraw.At(mark.Kills, new Vector2(x + width - killsWidth, y), accentSoft);
+        TextDraw.At(TextDraw.Truncate(mark.Name, width - killsWidth - 12f * scale), new Vector2(x, y), Styling.TextStrong);
+        y += ImGui.GetTextLineHeight() + 3f * scale;
+
+        using (Fonts.PushCaption())
+        {
+            var zone = TextDraw.Truncate(mark.ZoneName, width);
+            TextDraw.At(zone, new Vector2(x, y), Styling.TextDim);
+            TextDraw.Trailing(status, x + TextDraw.Measure(zone).X, x + width, y, Styling.TextMuted);
+            y += ImGui.GetTextLineHeight();
+        }
+
+        return y + 10f * scale;
     }
 
     private static void DrawKillRing(Vector2 center, float radius, Vector4 accent, bool active, BillSelection.Workload workload)
@@ -216,7 +240,7 @@ internal static class RunningPanel
         StatTile.Draw(Loc.T(L.Run.TileElapsed), Formatting.Elapsed(session?.Elapsed ?? TimeSpan.Zero), null, Styling.AccentBlue, tileWidth);
     }
 
-    private static void DrawQueue(IReadOnlyList<HuntBill> bills, BillSelection.Workload workload)
+    private static void DrawQueue(AutoHuntController controller, IReadOnlyList<HuntBill> bills, BillSelection.Workload workload)
     {
         var scale = ImGuiHelpers.GlobalScale;
         var origin = ImGui.GetCursorScreenPos();
@@ -238,10 +262,13 @@ internal static class RunningPanel
             var targets = MarkBillReader.Targets(markIndex);
             for (var targetIndex = 0; targetIndex < targets.Length; targetIndex++)
             {
-                if (!targets[targetIndex].Done)
+                var target = targets[targetIndex];
+                if (target.Done || !RoutePlanner.CanHunt(target))
                 {
-                    queue.Add(new QueueEntry(targets[targetIndex], status == BillStatus.Stale));
+                    continue;
                 }
+
+                queue.Add(new QueueEntry(markIndex, target, status == BillStatus.Stale));
             }
         }
 
@@ -252,10 +279,32 @@ internal static class RunningPanel
         }
 
         queue.Sort(byZone);
+        BringCurrentForward(controller.Progress);
         var shown = Math.Min(QueueLength, queue.Count);
         for (var index = 0; index < shown; index++)
         {
             DrawQueueRow(queue[index], index == 0);
+        }
+    }
+
+    private static void BringCurrentForward(HuntProgress progress)
+    {
+        if (!progress.HasMark)
+        {
+            return;
+        }
+
+        for (var index = 1; index < queue.Count; index++)
+        {
+            var entry = queue[index];
+            if (entry.MarkIndex != progress.Bill.MarkIndex || entry.Target.TargetRowId != progress.Target.TargetRowId)
+            {
+                continue;
+            }
+
+            queue.RemoveAt(index);
+            queue.Insert(0, entry);
+            return;
         }
     }
 
