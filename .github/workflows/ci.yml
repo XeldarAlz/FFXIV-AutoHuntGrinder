@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+
+  # Cheap gates that don't need the SDK or Dalamud — run them first so a
+  # version-sync mistake fails fast without burning the full build.
+  guards:
+    name: Guards (version sync)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify version sync (Directory.Build.props ↔ repo.json)
+        shell: bash
+        run: |
+          build_ver=$(grep -oP '<Version>\K[\d.]+(?=</Version>)' Directory.Build.props)
+          assembly_ver=$(jq -r '.[0].AssemblyVersion' repo.json)
+          testing_ver=$(jq -r '.[0].TestingAssemblyVersion' repo.json)
+          if [[ ! "$build_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Directory.Build.props <Version> ($build_ver) must have four parts (Major.Minor.Build.Revision). The SDK pads the shipped manifest's AssemblyVersion to four parts and Dalamud refuses to install when repo.json differs."
+            exit 1
+          fi
+          echo "Directory.Build.props <Version>      = $build_ver"
+          echo "repo.json AssemblyVersion           = $assembly_ver"
+          echo "repo.json TestingAssemblyVersion    = $testing_ver"
+          if [ "$build_ver" != "$assembly_ver" ] || [ "$build_ver" != "$testing_ver" ]; then
+            echo "::error::Version mismatch — Directory.Build.props ($build_ver), repo.json AssemblyVersion ($assembly_ver), TestingAssemblyVersion ($testing_ver) must all match."
+            exit 1
+          fi
+
+      # Every language catalog must carry exactly the keys of en.json, and the
+      # copy rules ban em dashes in the string table and the catalogs.
+      - name: Verify localization catalogs
+        shell: bash
+        run: |
+          dir=AutoHuntGrinder/Localization
+          for f in "$dir"/*.json; do
+            jq empty "$f" || { echo "::error::$f is not valid JSON"; exit 1; }
+          done
+          jq -r 'keys_unsorted[]' "$dir/en.json" > /tmp/en.keys
+          for code in de es fr ja pt ru tr zh; do
+            jq -r 'keys_unsorted[]' "$dir/$code.json" > "/tmp/$code.keys"
+            if ! diff -q /tmp/en.keys "/tmp/$code.keys" > /dev/null; then
+              echo "::error::$code.json keys differ from en.json (same keys, same order required):"
+              diff /tmp/en.keys "/tmp/$code.keys" || true
+              exit 1
+            fi
+          done
+          dash=$(printf '\xe2\x80\x94')
+          offenders=$(grep -n -F -- "$dash" "$dir"/*.json AutoHuntGrinder/Core/Localization/L.cs || true)
+          if [ -n "$offenders" ]; then
+            echo "$offenders"
+            echo "::error::No em dashes in L.cs or the language catalogs. Use commas, colons, or parentheses."
+            exit 1
+          fi
+
+  # Full build. Needs Dalamud present at the standard plugin path so
+  # Dalamud.NET.Sdk can resolve $(DalamudLibPath).
+  build:
+    name: Build (Windows)
+    needs: guards
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Download Dalamud dev build
+        shell: pwsh
+        run: |
+          $dalamudUrl = "https://goatcorp.github.io/dalamud-distrib/latest.zip"
+          $dalamudDir = "$env:AppData\XIVLauncher\addon\Hooks\dev"
+          New-Item -ItemType Directory -Force -Path $dalamudDir | Out-Null
+          Invoke-WebRequest -Uri $dalamudUrl -OutFile dalamud.zip
+          Expand-Archive -Path dalamud.zip -DestinationPath $dalamudDir -Force
+          Remove-Item dalamud.zip
+
+      - name: Restore
+        run: dotnet restore AutoHuntGrinder.sln
+
+      - name: Build (Release)
+        run: dotnet build AutoHuntGrinder.sln --configuration Release --no-restore
+
+      - name: Find test projects
+        id: find_tests
+        shell: bash
+        run: |
+          if find . -name "*.Tests.csproj" -o -name "*.Test.csproj" 2>/dev/null | grep -q .; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run tests
+        if: steps.find_tests.outputs.found == 'true'
+        run: dotnet test AutoHuntGrinder.sln --configuration Release --no-build --logger "console;verbosity=normal"
+
+      - name: Upload plugin artifact
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v7
+        with:
+          name: AutoHuntGrinder-plugin
+          path: AutoHuntGrinder/bin/Release/AutoHuntGrinder/latest.zip
+          if-no-files-found: warn

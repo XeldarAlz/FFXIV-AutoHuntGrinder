@@ -1,0 +1,113 @@
+name: Bug report
+description: Something's broken or behaving unexpectedly.
+title: "[Bug] "
+labels: ["bug"]
+assignees: ["XeldarAlz"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill out as much as you can; it makes a huge difference.
+
+        If you're not sure whether it's a bug or expected behavior, prefer the [Q&A discussions](https://github.com/XeldarAlz/FFXIV-AutoHuntGrinder/discussions/new?category=q-a); triage is faster there.
+
+        For security issues, please use [private vulnerability reporting](https://github.com/XeldarAlz/FFXIV-AutoHuntGrinder/security/advisories/new) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see? What did you expect to see instead?
+      placeholder: "The plugin accepted the Clan Mark Bill but never flew to the first mark..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to trigger the bug. If it's intermittent, say so.
+      placeholder: |
+        1. Open `/ahg`
+        2. Tick the Heavensward daily bills
+        3. Press Start
+        4. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: Shown in `/xlplugins` next to "Auto Hunt Grinder".
+      options:
+        - Older / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: expansion
+    attributes:
+      label: Expansion of the affected bill(s)
+      description: Hunt boards, bill ranks, and mark spawns differ per expansion, so expansion is a frequent root cause.
+      options:
+        - ARR (A Realm Reborn)
+        - HW (Heavensward)
+        - StB (Stormblood)
+        - ShB (Shadowbringers)
+        - EW (Endwalker)
+        - DT (Dawntrail)
+        - Multiple expansions
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: bills-affected
+    attributes:
+      label: Specific bill(s) or mark(s) affected
+      description: Which bill or mark was involved? List one or more.
+      placeholder: "Clan Mark Bill rank 2, the Dawntrail Elite Mark, a mark's name, ..."
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where in the run did it fail?
+      description: The plugin's flow runs pick up bills -> plan the route -> teleport -> fly to the spawn area -> find the mark -> fight -> next mark.
+      options:
+        - Pickup (didn't reach the hunt board / didn't accept a bill)
+        - Teleport (didn't move / wrong destination)
+        - Movement (stuck, can't reach the spawn area)
+        - Finding the mark (searched but never found a mark that was there)
+        - Combat (didn't start fighting, the fight never ended, player died)
+        - Kill credit (killed the mark but the bill didn't count it)
+        - Next mark (didn't move on to the next mark or bill)
+        - Selection / UI (issue before pressing Start)
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Attachments
+      description: |
+        **If you can provide any of these, it turns guesswork into a fix.**
+
+        - **Dalamud log**: open `/xllog`, click the *Open log folder* button at the bottom-right, attach `dalamud.log`. Filter by `[AutoHuntGrinder]` if you want to trim it down.
+        - **Screenshots / short clip** if the issue is visual (selection state, wrong tooltip, frozen card, etc.)
+        - **Other plugins active** that touch combat, movement, teleport, or input, which helps rule out conflicts.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Inline log excerpt (optional)
+      description: |
+        Short snippets (chat-log tail, Dalamud error text) belong here. For full log files, use **Attachments** above; don't paste them inline.
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Character class/job, your Grand Company or clan rank for the affected board, hunches, anything that helps the bug land.
