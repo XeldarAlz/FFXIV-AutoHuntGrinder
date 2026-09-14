@@ -10,7 +10,7 @@ namespace AutoHuntGrinder.Windows.Sections;
 
 internal static class ReadyState
 {
-    public enum Kind { SetupNeeded, PickBills, AllDone, Ready, Running, Paused }
+    public enum Kind { SetupNeeded, PickBills, PickLogs, PickMobs, NothingToHunt, AllDone, Ready, Running, Paused }
 
     public readonly record struct Info(Kind Kind, Vector4 Accent, Vector4 AccentSoft, FontAwesomeIcon Icon, string Title, string Detail);
 
@@ -51,31 +51,63 @@ internal static class ReadyState
                 Loc.T(L.Hunt.TitleSetupNeeded), Loc.T(L.Hunt.DetailSetupNeeded));
         }
 
-        if (BillSelection.CountSelected(configuration) == 0)
+        var mode = configuration.Mode;
+        return HuntLauncher.Assess(configuration, mode).Readiness switch
         {
-            return new Info(Kind.PickBills, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.ClipboardList,
-                Loc.T(L.Hunt.TitlePickBills), Loc.T(L.Hunt.DetailPickBills));
-        }
-
-        if (BillSelection.ResolveStartList(configuration).Count == 0)
-        {
-            return new Info(Kind.AllDone, Styling.AccentMint, Styling.AccentMintSoft, FontAwesomeIcon.CheckDouble,
-                Loc.T(L.Hunt.TitleAllDone), Loc.T(L.Hunt.DetailAllDone));
-        }
-
-        return new Info(Kind.Ready, Styling.AccentMint, Styling.AccentMintSoft, FontAwesomeIcon.CheckCircle,
-            Loc.T(L.Hunt.TitleReady), Loc.T(L.Hunt.DetailReady));
+            HuntLauncher.Readiness.NothingPicked => Pick(mode),
+            HuntLauncher.Readiness.Blocked => new Info(Kind.NothingToHunt, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.Ban,
+                Loc.T(mode == HuntMode.CustomList ? L.CustomList.TitleBlocked : L.HuntingLog.TitleBlocked),
+                Loc.T(mode == HuntMode.CustomList ? L.CustomList.DetailBlocked : L.HuntingLog.DetailBlocked)),
+            HuntLauncher.Readiness.AllDone => new Info(Kind.AllDone, Styling.AccentMint, Styling.AccentMintSoft, FontAwesomeIcon.CheckDouble,
+                Loc.T(DoneTitle(mode)), Loc.T(DoneDetail(mode))),
+            _ => new Info(Kind.Ready, Styling.AccentMint, Styling.AccentMintSoft, FontAwesomeIcon.CheckCircle,
+                Loc.T(L.Hunt.TitleReady), Loc.T(ReadyDetail(mode))),
+        };
     }
+
+    private static Info Pick(HuntMode mode) => mode switch
+    {
+        HuntMode.HuntingLog => new Info(Kind.PickLogs, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.BookOpen,
+            Loc.T(L.HuntingLog.TitlePick), Loc.T(L.HuntingLog.DetailPick)),
+        HuntMode.CustomList => new Info(Kind.PickMobs, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.Crosshairs,
+            Loc.T(L.CustomList.TitlePick), Loc.T(L.CustomList.DetailPick)),
+        _ => new Info(Kind.PickBills, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.ClipboardList,
+            Loc.T(L.Hunt.TitlePickBills), Loc.T(L.Hunt.DetailPickBills)),
+    };
+
+    private static LocString DoneTitle(HuntMode mode) => mode switch
+    {
+        HuntMode.HuntingLog => L.HuntingLog.TitleAllDone,
+        HuntMode.CustomList => L.CustomList.TitleAllDone,
+        _ => L.Hunt.TitleAllDone,
+    };
+
+    private static LocString DoneDetail(HuntMode mode) => mode switch
+    {
+        HuntMode.HuntingLog => L.HuntingLog.DetailAllDone,
+        HuntMode.CustomList => L.CustomList.DetailAllDone,
+        _ => L.Hunt.DetailAllDone,
+    };
+
+    private static LocString ReadyDetail(HuntMode mode) => mode switch
+    {
+        HuntMode.HuntingLog => L.HuntingLog.DetailReady,
+        HuntMode.CustomList => L.CustomList.DetailReady,
+        _ => L.Hunt.DetailReady,
+    };
 
     public static string ShortLabel(Kind kind) => kind switch
     {
-        Kind.Running     => Loc.T(L.Shell.StatusRunning),
-        Kind.Paused      => Loc.T(L.Shell.StatusPaused),
-        Kind.Ready       => Loc.T(L.Shell.StatusReady),
-        Kind.PickBills   => Loc.T(L.Shell.StatusPickBills),
-        Kind.AllDone     => Loc.T(L.Shell.StatusAllDone),
-        Kind.SetupNeeded => Loc.T(L.Shell.StatusSetupNeeded),
-        _                => Loc.T(L.Shell.StatusIdle),
+        Kind.Running       => Loc.T(L.Shell.StatusRunning),
+        Kind.Paused        => Loc.T(L.Shell.StatusPaused),
+        Kind.Ready         => Loc.T(L.Shell.StatusReady),
+        Kind.PickBills     => Loc.T(L.Shell.StatusPickBills),
+        Kind.PickLogs      => Loc.T(L.HuntingLog.StatusPickLogs),
+        Kind.PickMobs      => Loc.T(L.CustomList.StatusAddMobs),
+        Kind.NothingToHunt => Loc.T(L.HuntingLog.StatusNothingToHunt),
+        Kind.AllDone       => Loc.T(L.Shell.StatusAllDone),
+        Kind.SetupNeeded   => Loc.T(L.Shell.StatusSetupNeeded),
+        _                  => Loc.T(L.Shell.StatusIdle),
     };
 
     public static string PhaseLabel(HuntPhase phase) => phase switch

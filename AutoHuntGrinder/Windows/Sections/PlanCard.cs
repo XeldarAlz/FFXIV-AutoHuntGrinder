@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Core.Tasks;
@@ -23,8 +24,16 @@ internal static class PlanCard
     private const float PopoverGap = 6f;
     private const float PopoverRevealMs = 220f;
     private const float PopoverSlide = 8f;
+    private const float QueueRowHeight = 46f;
+    private const float QueueButtonSize = 26f;
+    private const float QueueButtonGap = 2f;
 
     private const string AfterPopup = "##ahg_after_popover";
+    private const string QueuePopup = "##ahg_queue_popover";
+    private const string AfterTokenId = "##ahg_token_after";
+
+    private static readonly string[] subjectTokenIds = ["##ahg_token_bills", "##ahg_token_logs", "##ahg_token_mobs"];
+    private static readonly string[] ordinals = BuildOrdinals(HuntingLogRegistry.SlotCount);
 
     private static readonly AfterRunAction[] afterRunOrder =
         [AfterRunAction.StayLoggedIn, AfterRunAction.ReturnToInn, AfterRunAction.Logout, AfterRunAction.CloseGame];
@@ -41,8 +50,12 @@ internal static class PlanCard
     private static readonly Vector2 PopoverPadding = new(16f, 16f);
     private static Vector2 afterAnchor;
     private static long afterOpenedTick;
+    private static Vector2 queueAnchor;
+    private static long queueOpenedTick;
 
-    private enum PieceKind { Word, Bills, After }
+    private enum PieceKind { Word, Subject, After }
+
+    private enum QueueEdit : byte { None, MoveUp, MoveDown, Remove }
 
     private readonly record struct Piece(PieceKind Kind, string Text);
 
@@ -54,6 +67,8 @@ internal static class PlanCard
         var padX = PadX * scale;
         var padY = PadY * scale;
         var drawList = ImGui.GetWindowDrawList();
+        var mode = configuration.Mode;
+        var plan = HuntLauncher.Assess(configuration, mode);
 
         drawList.ChannelsSplit(2);
         drawList.ChannelsSetCurrent(1);
@@ -64,7 +79,7 @@ internal static class PlanCard
         TextDraw.SectionTitle(planLabel, new Vector2(origin.X + padX, y), Styling.TextStrong);
         y += labelSize.Y + 10f * scale;
 
-        var focusBills = DrawSentence(configuration, controller, new Vector2(origin.X + padX, y), width - padX * 2f, out var sentenceBottom);
+        var focusLibrary = DrawSentence(configuration, controller, plan, new Vector2(origin.X + padX, y), width - padX * 2f, out var sentenceBottom);
         y = sentenceBottom + 14f * scale;
 
         ImGui.SetCursorScreenPos(new Vector2(origin.X + padX, y));
@@ -72,7 +87,16 @@ internal static class PlanCard
         {
             ImGui.PushID("##ahg_plan_chips");
             ImGui.BeginGroup();
-            BillStrip.Draw(configuration, controller, width - padX * 2f);
+            if (mode == HuntMode.MarkBills)
+            {
+                BillStrip.Draw(configuration, controller, width - padX * 2f);
+            }
+            else
+            {
+                var captionColor = plan.Readiness == HuntLauncher.Readiness.Ready ? Styling.TextDim : Styling.TextMuted;
+                DrawCaption(HuntLauncher.Caption(plan), captionColor, width - padX * 2f);
+            }
+
             ImGui.EndGroup();
             ImGui.PopID();
         }
@@ -86,21 +110,23 @@ internal static class PlanCard
         ImGui.SetCursorScreenPos(origin);
         ImGui.Dummy(new Vector2(width, end.Y - origin.Y));
 
-        DrawAfterPopover(configuration);
-        return focusBills;
+        DrawAfterPopover(configuration, mode);
+        DrawQueuePopover(configuration);
+        return focusLibrary;
     }
 
-    private static bool DrawSentence(Configuration configuration, AutoHuntController controller, Vector2 start, float maxWidth, out float bottom)
+    private static bool DrawSentence(Configuration configuration, AutoHuntController controller, in HuntLauncher.Plan plan, Vector2 start, float maxWidth, out float bottom)
     {
         var scale = ImGuiHelpers.GlobalScale;
         var tokenHeight = TokenHeight * scale;
         var wordGap = WordGap * scale;
-        var billCount = BillSelection.CountSelected(configuration);
+        var mode = plan.Mode;
         var end = Loc.T(L.Hunt.SentenceEnd);
+        var opensQueue = mode == HuntMode.HuntingLog && configuration.HuntingLogQueue.Count > 1;
 
         var count = 0;
-        pieces[count++] = new Piece(PieceKind.Word, Loc.T(L.Hunt.SentenceHunt));
-        pieces[count++] = new Piece(PieceKind.Bills, billCount == 0 ? Loc.T(L.Hunt.BillsNone) : Loc.Plural(L.Hunt.BillsCount, billCount));
+        pieces[count++] = new Piece(PieceKind.Word, Loc.T(mode == HuntMode.HuntingLog ? L.HuntingLog.SentenceFinish : L.Hunt.SentenceHunt));
+        pieces[count++] = new Piece(PieceKind.Subject, HuntLauncher.SubjectToken(configuration, plan));
         pieces[count++] = new Piece(PieceKind.Word, Loc.T(L.Hunt.SentenceThen));
         pieces[count++] = new Piece(PieceKind.After, Loc.T(afterRunChoices[AfterIndex(configuration)].Token));
         if (end.Length > 0)
@@ -110,7 +136,7 @@ internal static class PlanCard
 
         var x = start.X;
         var y = start.Y;
-        var focusBills = false;
+        var focusLibrary = false;
         var editable = !controller.Running;
 
         for (var index = 0; index < count; index++)
@@ -133,16 +159,25 @@ internal static class PlanCard
                 continue;
             }
 
-            var accent = piece.Kind == PieceKind.Bills && billCount == 0 ? Styling.AccentAmber : Styling.AccentGlow;
+            var accent = piece.Kind == PieceKind.Subject && plan.Picked == 0 ? Styling.AccentAmber : Styling.AccentGlow;
+            var anchor = new Vector2(x, y + tokenHeight + PopoverGap * scale);
             ImGui.SetCursorScreenPos(new Vector2(x, y));
-            var clicked = DrawToken(TokenId(piece.Kind), piece.Text, accent, editable);
-            if (piece.Kind == PieceKind.Bills)
+            var clicked = DrawToken(TokenId(piece.Kind, mode), piece.Text, accent, editable);
+            if (piece.Kind == PieceKind.Subject)
             {
-                focusBills |= clicked;
+                queueAnchor = anchor;
+                if (clicked && opensQueue)
+                {
+                    queueOpenedTick = OpenPopover(QueuePopup);
+                }
+                else
+                {
+                    focusLibrary |= clicked;
+                }
             }
             else
             {
-                afterAnchor = new Vector2(x, y + tokenHeight + PopoverGap * scale);
+                afterAnchor = anchor;
                 if (clicked)
                 {
                     afterOpenedTick = OpenPopover(AfterPopup);
@@ -153,10 +188,22 @@ internal static class PlanCard
         }
 
         bottom = y + tokenHeight;
-        return focusBills;
+        return focusLibrary;
     }
 
-    private static string TokenId(PieceKind kind) => kind == PieceKind.Bills ? "##ahg_token_bills" : "##ahg_token_after";
+    private static string TokenId(PieceKind kind, HuntMode mode)
+        => kind == PieceKind.Subject ? subjectTokenIds[Math.Clamp((int)mode, 0, subjectTokenIds.Length - 1)] : AfterTokenId;
+
+    private static void DrawCaption(string text, Vector4 color, float maxWidth)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var origin = ImGui.GetCursorScreenPos();
+        using (Fonts.PushCaption())
+        {
+            TextDraw.At(TextDraw.Truncate(text, maxWidth - 2f * scale), new Vector2(origin.X + 2f * scale, origin.Y), color);
+            ImGui.Dummy(new Vector2(maxWidth, ImGui.GetTextLineHeight()));
+        }
+    }
 
     private static float TokenWidth(string label)
     {
@@ -202,6 +249,13 @@ internal static class PlanCard
 
     private static int AfterIndex(Configuration configuration) => Math.Max(0, Array.IndexOf(afterRunOrder, configuration.AfterRun));
 
+    private static LocString WhenDoneHeading(HuntMode mode) => mode switch
+    {
+        HuntMode.HuntingLog => L.HuntingLog.WhenDone,
+        HuntMode.CustomList => L.CustomList.WhenDone,
+        _ => L.Hunt.WhenDone,
+    };
+
     private static Vector2 PopoverPosition(Vector2 anchor, float contentWidth)
     {
         var viewport = ImGui.GetMainViewport();
@@ -241,7 +295,7 @@ internal static class PlanCard
         }
     }
 
-    private static void DrawAfterPopover(Configuration configuration)
+    private static void DrawAfterPopover(Configuration configuration, HuntMode mode)
     {
         if (!ImGui.IsPopupOpen(AfterPopup))
         {
@@ -257,11 +311,7 @@ internal static class PlanCard
         }
 
         var current = AfterIndex(configuration);
-        var heading = Loc.T(L.Hunt.WhenDone);
-        var labelOrigin = ImGui.GetCursorScreenPos();
-        var labelSize = TextDraw.SectionTitleSize(heading);
-        TextDraw.SectionTitle(heading, labelOrigin, Styling.TextStrong);
-        ImGui.Dummy(new Vector2(width, labelSize.Y + 8f * scale));
+        DrawPopoverHeading(Loc.T(WhenDoneHeading(mode)), width, 8f);
 
         for (var index = 0; index < afterRunChoices.Length; index++)
         {
@@ -274,6 +324,14 @@ internal static class PlanCard
             configuration.SaveDebounced();
             ImGui.CloseCurrentPopup();
         }
+    }
+
+    private static void DrawPopoverHeading(string heading, float width, float gapBelow)
+    {
+        var labelOrigin = ImGui.GetCursorScreenPos();
+        var labelSize = TextDraw.SectionTitleSize(heading);
+        TextDraw.SectionTitle(heading, labelOrigin, Styling.TextStrong);
+        ImGui.Dummy(new Vector2(width, labelSize.Y + gapBelow * ImGuiHelpers.GlobalScale));
     }
 
     private static bool DrawChoiceRow(int index, string name, string detail, bool selected, float width)
@@ -317,5 +375,144 @@ internal static class PlanCard
         }
 
         return hit.Clicked;
+    }
+
+    private static void DrawQueuePopover(Configuration configuration)
+    {
+        if (!ImGui.IsPopupOpen(QueuePopup))
+        {
+            return;
+        }
+
+        var scale = ImGuiHelpers.GlobalScale;
+        var width = PopoverWidth * scale;
+        using var popover = new Popover(QueuePopup, queueAnchor, width, queueOpenedTick);
+        if (!popover.Open)
+        {
+            return;
+        }
+
+        DrawPopoverHeading(Loc.T(L.HuntingLog.QueueTitle), width, 2f);
+        var queue = configuration.HuntingLogQueue;
+        using (Fonts.PushCaption())
+        {
+            TextDraw.At(Loc.T(queue.Count == 0 ? L.HuntingLog.QueueEmpty : L.HuntingLog.QueueHint), ImGui.GetCursorScreenPos(), Styling.TextMuted);
+            ImGui.Dummy(new Vector2(width, ImGui.GetTextLineHeight() + 4f * scale));
+        }
+
+        var edit = QueueEdit.None;
+        var editIndex = -1;
+        for (var index = 0; index < queue.Count; index++)
+        {
+            var rowEdit = DrawQueueRow(index, queue[index], queue.Count, width);
+            if (rowEdit == QueueEdit.None)
+            {
+                continue;
+            }
+
+            edit = rowEdit;
+            editIndex = index;
+        }
+
+        ApplyQueueEdit(configuration, edit, editIndex);
+    }
+
+    private static QueueEdit DrawQueueRow(int index, byte slot, int count, float width)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var size = new Vector2(width, QueueRowHeight * scale);
+        var origin = ImGui.GetCursorScreenPos();
+        var end = origin + size;
+        var drawList = ImGui.GetWindowDrawList();
+        var padX = 10f * scale;
+        var midY = origin.Y + size.Y * 0.5f;
+        var button = QueueButtonSize * scale;
+        var buttonGap = QueueButtonGap * scale;
+
+        Paint.Fill(drawList, origin, end, Styling.WithAlpha(Styling.Surface2, 0.55f), 8f * scale);
+
+        var ordinal = index < ordinals.Length ? ordinals[index] : string.Empty;
+        var ordinalSize = TextDraw.Measure(ordinal);
+        TextDraw.At(ordinal, new Vector2(origin.X + padX, midY - ordinalSize.Y * 0.5f), Styling.TextDim);
+
+        var buttonsLeft = end.X - padX - button * 3f - buttonGap * 2f;
+        var textX = origin.X + padX + TextDraw.Measure(ordinals[^1]).X + 10f * scale;
+        var textWidth = buttonsLeft - 10f * scale - textX;
+        var state = HuntLauncher.StateOf(slot);
+        var lineHeight = ImGui.GetTextLineHeight();
+        using (Fonts.PushCaption())
+        {
+            var captionHeight = ImGui.GetTextLineHeight();
+            var top = midY - (lineHeight + 2f * scale + captionHeight) * 0.5f;
+            TextDraw.At(TextDraw.Truncate(HuntLauncher.StatusText(slot, state), textWidth), new Vector2(textX, top + lineHeight + 2f * scale),
+                HuntLauncher.StatusColor(state));
+            using (Fonts.PushBody())
+            {
+                TextDraw.At(TextDraw.Truncate(HuntingLogRegistry.BookName(slot), textWidth), new Vector2(textX, top), Styling.TextStrong);
+            }
+        }
+
+        var edit = QueueEdit.None;
+        var buttonY = midY - button * 0.5f;
+        ImGui.PushID(index);
+        ImGui.SetCursorScreenPos(new Vector2(buttonsLeft, buttonY));
+        if (IconButton.Draw(FontAwesomeIcon.ArrowUp, "##up", button, tooltip: Loc.T(L.HuntingLog.MoveUp), enabled: index > 0))
+        {
+            edit = QueueEdit.MoveUp;
+        }
+
+        ImGui.SetCursorScreenPos(new Vector2(buttonsLeft + button + buttonGap, buttonY));
+        if (IconButton.Draw(FontAwesomeIcon.ArrowDown, "##down", button, tooltip: Loc.T(L.HuntingLog.MoveDown), enabled: index < count - 1))
+        {
+            edit = QueueEdit.MoveDown;
+        }
+
+        ImGui.SetCursorScreenPos(new Vector2(buttonsLeft + (button + buttonGap) * 2f, buttonY));
+        if (IconButton.Draw(FontAwesomeIcon.Times, "##remove", button, Styling.AccentRose, Loc.T(L.HuntingLog.RemoveFromQueue)))
+        {
+            edit = QueueEdit.Remove;
+        }
+
+        ImGui.PopID();
+        ImGui.SetCursorScreenPos(origin);
+        ImGui.Dummy(size);
+        return edit;
+    }
+
+    private static void ApplyQueueEdit(Configuration configuration, QueueEdit edit, int index)
+    {
+        var queue = configuration.HuntingLogQueue;
+        if ((uint)index >= (uint)queue.Count)
+        {
+            return;
+        }
+
+        switch (edit)
+        {
+            case QueueEdit.MoveUp when index > 0:
+                (queue[index - 1], queue[index]) = (queue[index], queue[index - 1]);
+                break;
+            case QueueEdit.MoveDown when index < queue.Count - 1:
+                (queue[index + 1], queue[index]) = (queue[index], queue[index + 1]);
+                break;
+            case QueueEdit.Remove:
+                queue.RemoveAt(index);
+                break;
+            default:
+                return;
+        }
+
+        configuration.Save();
+    }
+
+    private static string[] BuildOrdinals(int count)
+    {
+        var built = new string[count];
+        for (var index = 0; index < count; index++)
+        {
+            built[index] = $"{index + 1}.";
+        }
+
+        return built;
     }
 }
