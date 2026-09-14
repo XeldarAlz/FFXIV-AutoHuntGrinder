@@ -1,5 +1,6 @@
 using AutoHuntGrinder.Core.Custom;
 using AutoHuntGrinder.Core.Localization;
+using AutoHuntGrinder.Core.Marks;
 using AutoHuntGrinder.Core.Spawns;
 using AutoHuntGrinder.Core.Tasks;
 using AutoHuntGrinder.Core.Travel;
@@ -15,10 +16,8 @@ namespace AutoHuntGrinder.Windows.Sections;
 internal static class CustomListEditor
 {
     private const float Gap = 8f;
-    private const float SearchHeight = 36f;
-    private const float SearchPadX = 12f;
-    private const float SearchIconGap = 8f;
-    private const int QueryMaxLength = 64;
+    private const float ViewSwitchHeight = 34f;
+    private const float ViewSlide = 8f;
     private const int VisibleResults = 8;
     private const float ResultRowHeight = 38f;
     private const float SummaryRowHeight = 32f;
@@ -41,6 +40,7 @@ internal static class CustomListEditor
     private static readonly int[] results = new int[VisibleResults + 1];
     private static readonly string[] resultZones = new string[VisibleResults];
     private static readonly Dictionary<uint, ZoneOptions> zoneOptions = new();
+    private static readonly Segmented.Item[] viewItems = new Segmented.Item[ViewCount];
 
     private static CachedText[] entryKills = new CachedText[16];
     private static CachedText summaryText;
@@ -51,6 +51,11 @@ internal static class CustomListEditor
     private static LanguageInfo? searchedLanguage;
     private static int resultCount;
     private static bool searchFocused;
+    private static int currentView;
+
+    private const int ViewCount = 3;
+
+    private enum View : byte { MyList, HuntMarks, MarkAchievements }
 
     private enum RowAction : byte { None, Reset, Remove }
 
@@ -61,47 +66,40 @@ internal static class CustomListEditor
         var running = controller.Running;
         LibraryHeader.Draw(Loc.T(L.CustomList.Library), scrollIntoView);
         Styling.VSpace(10f);
-        DrawSearch();
+        DrawViewSwitch();
+        Styling.VSpace(12f);
+
+        using var reveal = Motion.PushSwitch("##ahg_custom_view", currentView, slide: ViewSlide);
+        switch ((View)currentView)
+        {
+            case View.HuntMarks:
+                HuntMarkBrowser.Draw(running);
+                break;
+            case View.MarkAchievements:
+                MarkAchievementBoard.Draw(running);
+                break;
+            default:
+                DrawMyList(configuration, running);
+                break;
+        }
+    }
+
+    private static void DrawViewSwitch()
+    {
+        viewItems[(int)View.MyList] = new Segmented.Item(FontAwesomeIcon.ListUl, Loc.T(L.HuntMarks.ViewMyList));
+        viewItems[(int)View.HuntMarks] = new Segmented.Item(FontAwesomeIcon.Skull, Loc.T(L.HuntMarks.ViewMarks));
+        viewItems[(int)View.MarkAchievements] = new Segmented.Item(FontAwesomeIcon.Trophy, Loc.T(L.HuntMarks.ViewAchievements));
+        Segmented.Draw("##ahg_custom_views", viewItems, ref currentView, height: ViewSwitchHeight);
+    }
+
+    private static void DrawMyList(Configuration configuration, bool running)
+    {
+        SearchField.Draw("##ahg_custom_search", Loc.T(L.CustomList.SearchHint), ref query, ref searchFocused, ImGui.GetContentRegionAvail().X);
+        RefreshResults();
         DrawResults(running);
 
         Styling.VSpace(14f);
         DrawEntries(configuration, running);
-    }
-
-    private static void DrawSearch()
-    {
-        var scale = ImGuiHelpers.GlobalScale;
-        var origin = ImGui.GetCursorScreenPos();
-        var width = ImGui.GetContentRegionAvail().X;
-        var height = SearchHeight * scale;
-        var end = origin + new Vector2(width, height);
-        var padX = SearchPadX * scale;
-        var drawList = ImGui.GetWindowDrawList();
-        var rounding = Styling.FrameRounding * scale;
-        var focus = Motion.Approach(Motion.Key("##ahg_custom_search", 1), searchFocused ? 1f : 0f, 16f);
-
-        Paint.Fill(drawList, origin, end, Styling.WithAlpha(Styling.Surface0, 0.9f), rounding);
-        Paint.Stroke(drawList, origin, end,
-            Vector4.Lerp(Styling.WithAlpha(Styling.BorderDim, 0.75f), Styling.WithAlpha(Styling.AccentGlowSoft, 0.85f), focus), rounding);
-
-        var iconSize = TextDraw.IconSize(FontAwesomeIcon.Search);
-        TextDraw.Icon(FontAwesomeIcon.Search, new Vector2(origin.X + padX, origin.Y + (height - iconSize.Y) * 0.5f),
-            Vector4.Lerp(Styling.TextMuted, Styling.AccentGlowSoft, focus));
-
-        var fieldX = origin.X + padX + iconSize.X + SearchIconGap * scale;
-        ImGui.SetCursorScreenPos(new Vector2(fieldX, origin.Y + (height - ImGui.GetFrameHeight()) * 0.5f));
-        ImGui.SetNextItemWidth(end.X - fieldX - padX);
-        using (ImRaii.PushColor(ImGuiCol.FrameBg, Vector4.Zero)
-            .Push(ImGuiCol.FrameBgHovered, Vector4.Zero)
-            .Push(ImGuiCol.FrameBgActive, Vector4.Zero))
-        {
-            ImGui.InputTextWithHint("##ahg_custom_search", Loc.T(L.CustomList.SearchHint), ref query, QueryMaxLength);
-        }
-
-        searchFocused = ImGui.IsItemActive();
-        ImGui.SetCursorScreenPos(origin);
-        ImGui.Dummy(new Vector2(width, height));
-        RefreshResults();
     }
 
     // The catalog is searched only when the text changes; zone lines follow the plugin language, so a switch rebuilds them.
@@ -396,9 +394,15 @@ internal static class CustomListEditor
             x -= DrawFateOnlyBadge(drawList, x, midY, line) + 10f * scale;
         }
 
-        var name = TextDraw.Truncate(CustomMobCatalog.NameOf(entry.NameId), x - controlsX);
+        var nameX = controlsX;
+        if (HuntMarkRegistry.TryGet(entry.NameId, out var mark))
+        {
+            nameX += DrawRankBadge(drawList, mark.Rank, controlsX, midY) + 8f * scale;
+        }
+
+        var name = TextDraw.Truncate(CustomMobCatalog.NameOf(entry.NameId), x - nameX);
         var nameSize = TextDraw.Measure(name);
-        TextDraw.At(name, new Vector2(controlsX, midY - nameSize.Y * 0.5f), entry.Enabled ? Styling.TextStrong : Styling.TextDim);
+        TextDraw.At(name, new Vector2(nameX, midY - nameSize.Y * 0.5f), entry.Enabled ? Styling.TextStrong : Styling.TextDim);
         ImGui.PopID();
 
         var inset = rounding * 0.9f;
@@ -417,6 +421,17 @@ internal static class CustomListEditor
         if (Hit.HoveringRect(new Vector2(rightX - width, midY - line * 0.5f), new Vector2(rightX, midY + line * 0.5f)))
         {
             Tooltip.Show(Loc.T(L.CustomList.FateOnlyHelp));
+        }
+
+        return width;
+    }
+
+    private static float DrawRankBadge(ImDrawListPtr drawList, HuntMarkRank rank, float leftX, float midY)
+    {
+        var width = MarkBadges.DrawRank(drawList, rank, leftX, midY);
+        if (rank == HuntMarkRank.S && Hit.HoveringRect(new Vector2(leftX, midY - width * 0.5f), new Vector2(leftX + width, midY + width * 0.5f)))
+        {
+            Tooltip.Show(Loc.T(L.HuntMarks.SRankHelp));
         }
 
         return width;
