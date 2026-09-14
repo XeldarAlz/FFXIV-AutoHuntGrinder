@@ -288,7 +288,7 @@ public abstract partial class AutoCommon
         if (Svc.Condition[ConditionFlag.Mounted])
         {
             Diag($"{scope}: dismounting to use the board");
-            await DismountViaOp($"{scope}-dismount");
+            await SafeDismount($"{scope}-dismount");
         }
 
         if (await WaitUntilTimed(NpcInteraction.PlayerReady, BoardReadyTimeoutMs, $"{scope}-ready", BoardUiCheckFrames))

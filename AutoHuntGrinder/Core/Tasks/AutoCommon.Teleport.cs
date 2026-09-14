@@ -102,7 +102,7 @@ public abstract partial class AutoCommon
         }
 
         Diag($"{scope}: dismounting before teleport ({ConditionTag()})");
-        await DismountViaOp($"{scope}-dismount");
+        await SafeDismount($"{scope}-dismount");
     }
 
     // Clears a stuck "another teleport is already underway" state that silently blocks every aetheryte teleport. Return

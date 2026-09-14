@@ -19,6 +19,7 @@ internal sealed class NavmeshIPC
     private const string NumWaypointsFailed = AhgConstants.LogPrefix + " Navmesh NumWaypoints failed";
     private const string ListWaypointsFailed = AhgConstants.LogPrefix + " Navmesh ListWaypoints failed";
     private const string StopFailed = AhgConstants.LogPrefix + " Navmesh Stop failed";
+    private const string MoveToFailed = AhgConstants.LogPrefix + " Navmesh Path.MoveTo failed";
 
     private static NavmeshIPC? instance;
 
@@ -30,6 +31,7 @@ internal sealed class NavmeshIPC
     private readonly ICallGateSubscriber<Vector3, float, float, Vector3?> nearestPointReachable;
     private readonly ICallGateSubscriber<Vector3, bool, float, Vector3?> pointOnFloor;
     private readonly ICallGateSubscriber<object> pathStop;
+    private readonly ICallGateSubscriber<List<Vector3>, bool, object> pathMoveTo;
     private readonly ICallGateSubscriber<int> pathNumWaypoints;
     private readonly ICallGateSubscriber<List<Vector3>> pathListWaypoints;
 
@@ -54,6 +56,7 @@ internal sealed class NavmeshIPC
         nearestPointReachable = pluginInterface.GetIpcSubscriber<Vector3, float, float, Vector3?>("vnavmesh.Query.Mesh.NearestPointReachable");
         pointOnFloor = pluginInterface.GetIpcSubscriber<Vector3, bool, float, Vector3?>("vnavmesh.Query.Mesh.PointOnFloor");
         pathStop = pluginInterface.GetIpcSubscriber<object>("vnavmesh.Path.Stop");
+        pathMoveTo = pluginInterface.GetIpcSubscriber<List<Vector3>, bool, object>("vnavmesh.Path.MoveTo");
         pathNumWaypoints = pluginInterface.GetIpcSubscriber<int>("vnavmesh.Path.NumWaypoints");
         pathListWaypoints = pluginInterface.GetIpcSubscriber<List<Vector3>>("vnavmesh.Path.ListWaypoints");
 
@@ -111,6 +114,11 @@ internal sealed class NavmeshIPC
         return waypoints is { Count: > 0 } ? waypoints[0] : null;
     }
 
+    // Registered as an action on the far side, so it is HasAction that says whether it can be called.
     public void Stop()
-        => IpcGate.Run(pathStop.HasFunction, stopCall, StopFailed);
+        => IpcGate.Run(pathStop.HasAction, stopCall, StopFailed);
+
+    // Follows the given waypoints as they are, with no path search, so the caller has to know the way is clear.
+    public void MoveAlong(List<Vector3> waypoints, bool fly)
+        => IpcGate.Run(pathMoveTo.HasAction, () => pathMoveTo.InvokeAction(waypoints, fly), MoveToFailed);
 }

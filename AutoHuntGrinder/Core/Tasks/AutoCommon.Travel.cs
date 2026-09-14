@@ -23,6 +23,11 @@ public abstract partial class AutoCommon
     private const int MaxTravelStalls = 5;
     private const int StallsBeforeUnstick = 2;
     private const int StallsBeforeTeleportRecovery = 3;
+    private const int MaxFalseStarts = 3;
+    private const int FalseStartSettleMs = 1_500;
+    private const int StillnessConfirmMs = 300;
+    private const int StillnessPollMs = 100;
+    private const float StillnessMeters = 0.2f;
     // The saving at which the movement library itself calls a teleport faster than flying.
     private const float TeleportShortcutMinSavingMeters = 300f;
     // A recovery teleport to an aetheryte this close would land right where the character got stuck.
@@ -42,13 +47,19 @@ public abstract partial class AutoCommon
     private const float UnstickStepMinMeters = 1.5f;
     private const float UnstickStepToleranceMeters = 0.5f;
     private const int UnstickStepWatchdogMs = 8_000;
+    private const float UnstickSideStepMeters = 4f;
+    private const float UnstickSideStepHalfExtentMeters = 3f;
 
     private static readonly MovementConfig rideMovement = MovementConfig.Everything.WithOptions(MovementOptions.Mount | MovementOptions.Fly);
     private static readonly MovementConfig walkMovement = MovementConfig.Default;
 
+    private bool outsideMovementWarned;
+
     private enum ZoneTravelResult { Arrived, Failed, LeftZone }
 
-    private enum LegOutcome { EndedShort, Stalled, Faulted, MountFailed, Remount }
+    private enum LegOutcome { EndedShort, Stalled, Faulted, MountFailed, Remount, FalseStart }
+
+    private enum TeleportPurpose { Shortcut, Recovery, OffMesh }
 
     protected async Task<bool> TravelTo(uint territoryId, Vector3 destination, float arriveWithin)
     {
@@ -132,7 +143,7 @@ public abstract partial class AutoCommon
         var target = SnapToFloor(destination);
         if (!Arrived(target, destination, arriveWithin))
         {
-            await TryTeleportShortcut(territoryId, target, "travel-shortcut", recovery: false);
+            await TryTeleportShortcut(territoryId, target, "travel-shortcut", TeleportPurpose.Shortcut);
             await TryAethernetShortcut(territoryId, target);
         }
 
@@ -140,6 +151,7 @@ public abstract partial class AutoCommon
         var budgetMs = TravelBudgetMs(target);
         var deadline = Environment.TickCount64 + budgetMs;
         var stalls = 0;
+        var falseStarts = 0;
         var teleportRecoveryUsed = false;
         for (var leg = 1; ; leg++)
         {
@@ -179,6 +191,19 @@ public abstract partial class AutoCommon
                 Diag($"{scope}: could not mount here; walking the rest of the way");
             }
 
+            if (outcome == LegOutcome.FalseStart && falseStarts < MaxFalseStarts)
+            {
+                falseStarts++;
+                await RecoverFromFalseStart(scope, falseStarts);
+                continue;
+            }
+
+            NavmeshIPC.Instance.Stop();
+            if (await RecoverIfOffMesh(territoryId, target, scope))
+            {
+                continue;
+            }
+
             stalls++;
             if (stalls >= MaxTravelStalls)
             {
@@ -186,11 +211,10 @@ public abstract partial class AutoCommon
                 return ZoneTravelResult.Failed;
             }
 
-            NavmeshIPC.Instance.Stop();
             if (stalls >= StallsBeforeTeleportRecovery && !teleportRecoveryUsed)
             {
                 teleportRecoveryUsed = true;
-                if (await TryTeleportShortcut(territoryId, target, $"{scope}-recovery", recovery: true))
+                if (await TryTeleportShortcut(territoryId, target, $"{scope}-recovery", TeleportPurpose.Recovery))
                 {
                     continue;
                 }
@@ -198,7 +222,7 @@ public abstract partial class AutoCommon
 
             if (stalls >= StallsBeforeUnstick)
             {
-                await Unstick(scope);
+                await Unstick(scope, target, stalls);
             }
             else
             {
@@ -252,6 +276,7 @@ public abstract partial class AutoCommon
         }
 
         Diag($"{scope}: {(ride ? "mounted" : "on foot")}, flight {(ECommons.GameHelpers.Player.CanFly ? "available" : "unavailable")}, {DistanceTo(target):F0}m to go");
+        var startedAt = Environment.TickCount64;
         var operation = new MoveOp(move => move.MoveInZone(target, MovementFor(ride, arriveWithin), StopCondition));
         var completed = await RunCancellable(operation, watchdogMs, scope, AbortIfStalled);
         if (remount)
@@ -276,10 +301,80 @@ public abstract partial class AutoCommon
             return LegOutcome.Faulted;
         }
 
-        return completed ? LegOutcome.EndedShort : LegOutcome.Stalled;
+        if (!completed)
+        {
+            return LegOutcome.Stalled;
+        }
+
+        return Environment.TickCount64 - startedAt < StuckDetector.FalseStartMs ? LegOutcome.FalseStart : LegOutcome.EndedShort;
     }
 
-    private async Task<bool> TryTeleportShortcut(uint territoryId, Vector3 target, string label, bool recovery)
+    // Something else had the character: the game's own descent after a dismount in the air, the combat plugin's
+    // automatic movement, a held key or auto-run. The pathfinder drops a path the moment it sees movement input it did
+    // not produce. A jump ends a descent; anything else has to stop on its own before the next path stands a chance.
+    private async Task RecoverFromFalseStart(string scope, int falseStarts)
+    {
+        Diag($"{scope}: the path was dropped within {StuckDetector.FalseStartMs}ms of starting ({falseStarts}/{MaxFalseStarts}; {DescribeOutsideMovement()})");
+        CancelDescent();
+        if (await WaitForStillness(FalseStartSettleMs) || outsideMovementWarned || CancelToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        outsideMovementWarned = true;
+        Warn($"{scope}: the character keeps moving on its own, so every path is dropped as soon as it starts. If the pathfinder's 'Cancel current path on player movement input' setting is on, turn it off; a held movement key, auto-run or a drifting controller does the same.");
+        Svc.Chat.PrintError($"{AhgConstants.LogPrefix} The character keeps moving on its own, so paths are dropped as soon as they start. Turn off the pathfinder's 'cancel path on movement input' setting, and check that no key or auto-run is held.");
+    }
+
+    private async Task<bool> WaitForStillness(int budgetMs)
+    {
+        var deadline = Environment.TickCount64 + budgetMs;
+        Vector3? anchor = null;
+        var stillSinceMs = Environment.TickCount64;
+        while (Environment.TickCount64 < deadline && !CancelToken.IsCancellationRequested)
+        {
+            if (Svc.Objects.LocalPlayer is { } player)
+            {
+                var now = Environment.TickCount64;
+                var position = player.Position;
+                if (anchor is null || Vector3.Distance(anchor.Value, position) > StillnessMeters)
+                {
+                    anchor = position;
+                    stillSinceMs = now;
+                }
+                else if (now - stillSinceMs >= StillnessConfirmMs)
+                {
+                    return true;
+                }
+            }
+
+            await DelayMs(StillnessPollMs);
+        }
+
+        return false;
+    }
+
+    // Under the world's surface the pathfinder still plans routes and the character still moves, so no stall ever
+    // fires; a teleport is the one way back up. True once the character stands somewhere else.
+    private async Task<bool> RecoverIfOffMesh(uint territoryId, Vector3 target, string scope)
+    {
+        if (!StuckDetector.IsOffMesh())
+        {
+            return false;
+        }
+
+        await DelayMs(StuckDetector.OffMeshConfirmMs);
+        if (CancelToken.IsCancellationRequested || !StuckDetector.IsOffMesh())
+        {
+            return false;
+        }
+
+        var here = Svc.Objects.LocalPlayer?.Position ?? Vector3.Zero;
+        Warn($"{scope}: no reachable mesh within {StuckDetector.OffMeshProbeMeters:F0}m of {FormatPosition(here)} ({ConditionTag()}); the character is off the world's surface, teleporting out");
+        return await TryTeleportShortcut(territoryId, target, $"{scope}-offmesh", TeleportPurpose.OffMesh);
+    }
+
+    private async Task<bool> TryTeleportShortcut(uint territoryId, Vector3 target, string label, TeleportPurpose purpose)
     {
         if (Svc.Condition[ConditionFlag.InCombat] || Svc.Objects.LocalPlayer is not { } player)
         {
@@ -293,17 +388,25 @@ public abstract partial class AutoCommon
 
         var fromHere = Vector3.Distance(player.Position, target);
         var fromAetheryte = Vector3.Distance(aetheryte.Position, target);
-        var worthIt = recovery
-            ? Vector3.Distance(player.Position, aetheryte.Position) >= TeleportRecoveryMinHopMeters
-            : fromHere - fromAetheryte >= TeleportShortcutMinSavingMeters;
+        var hop = Vector3.Distance(player.Position, aetheryte.Position);
+        var worthIt = purpose switch
+        {
+            TeleportPurpose.Shortcut => fromHere - fromAetheryte >= TeleportShortcutMinSavingMeters,
+            // A recovery that lands farther from the spot than the character already is trades one long trip for another.
+            TeleportPurpose.Recovery => hop >= TeleportRecoveryMinHopMeters && fromAetheryte < fromHere,
+            _ => true,
+        };
         if (!worthIt)
         {
             return false;
         }
 
-        Diag(recovery
-            ? $"{label}: teleporting to {aetheryte.Name} to get unstuck, {fromAetheryte:F0}m from the spot"
-            : $"{label}: {aetheryte.Name} is {fromAetheryte:F0}m from the spot against {fromHere:F0}m from here; teleporting");
+        Diag(purpose switch
+        {
+            TeleportPurpose.Shortcut => $"{label}: {aetheryte.Name} is {fromAetheryte:F0}m from the spot against {fromHere:F0}m from here; teleporting",
+            TeleportPurpose.Recovery => $"{label}: teleporting to {aetheryte.Name} to get unstuck, {fromAetheryte:F0}m from the spot",
+            _ => $"{label}: teleporting to {aetheryte.Name} to get back onto the world, {fromAetheryte:F0}m from the spot",
+        });
         var moved = false;
         await RunWithStatusPinned($"Teleporting to {aetheryte.Name}", async () =>
         {
@@ -363,16 +466,26 @@ public abstract partial class AutoCommon
         await WaitForNavmeshReady(TravelNavmeshWaitMs, TravelNavmeshPollFrames);
     }
 
-    private async Task Unstick(string scope)
+    // In the air the mount is pressed against something, and only backing away frees it. On the ground the jump clears
+    // a low snag; when the character is still on the mesh after that, a step to the side, alternating sides on each
+    // stall, gets it off the corner or fence post the straight route keeps pushing into.
+    private async Task Unstick(string scope, Vector3 target, int stalls)
     {
-        if (Svc.Condition[ConditionFlag.InFlight] || Svc.Condition[ConditionFlag.Swimming] || Svc.Condition[ConditionFlag.Diving])
+        if (Svc.Condition[ConditionFlag.InFlight])
         {
-            Diag($"{scope}: stuck off the ground ({ConditionTag()}); re-pathing");
+            Diag($"{scope}: stuck in the air ({ConditionTag()})");
+            await BackOffInFlight(scope);
+            return;
+        }
+
+        if (Svc.Condition[ConditionFlag.Swimming] || Svc.Condition[ConditionFlag.Diving])
+        {
+            Diag($"{scope}: stuck in the water ({ConditionTag()}); re-pathing");
             return;
         }
 
         Status = "Getting unstuck";
-        Diag($"{scope}: stuck ({ConditionTag()}); jumping and stepping back onto the mesh");
+        Diag($"{scope}: stuck ({ConditionTag()}); jumping and stepping off the snag");
         UseGeneralAction(JumpGeneralActionId);
         await DelayMs(UnstickSettleMs);
         if (CancelToken.IsCancellationRequested || Svc.Objects.LocalPlayer is not { } player)
@@ -381,15 +494,37 @@ public abstract partial class AutoCommon
         }
 
         var position = player.Position;
-        if (NavmeshIPC.Instance.NearestPointReachable(position, UnstickStepHalfExtentMeters, UnstickStepHalfExtentMeters) is not { } step
-            || Vector3.Distance(position, step) < UnstickStepMinMeters)
+        var navmesh = NavmeshIPC.Instance;
+        var step = navmesh.NearestPointReachable(position, UnstickStepHalfExtentMeters, UnstickStepHalfExtentMeters);
+        if (step is null || Vector3.Distance(position, step.Value) < UnstickStepMinMeters)
+        {
+            step = SideStep(navmesh, position, target, stalls);
+        }
+
+        if (step is not { } destination)
         {
             return;
         }
 
         var stepScope = $"{scope}-step";
-        var operation = new MoveOp(move => move.MoveInZone(step, walkMovement.WithTolerance(UnstickStepToleranceMeters), null));
+        Diag($"{stepScope}: stepping {Vector3.Distance(position, destination):F1}m to {FormatPosition(destination)}");
+        var operation = new MoveOp(move => move.MoveInZone(destination, walkMovement.WithTolerance(UnstickStepToleranceMeters), null));
         await RunCancellable(operation, UnstickStepWatchdogMs, stepScope, StuckDetector.MoveStallAbort(stepScope));
+    }
+
+    private static Vector3? SideStep(NavmeshIPC navmesh, Vector3 position, Vector3 target, int stalls)
+    {
+        var toward = new Vector2(target.X - position.X, target.Z - position.Z);
+        if (toward.LengthSquared() < UnstickStepMinMeters * UnstickStepMinMeters)
+        {
+            return null;
+        }
+
+        toward = Vector2.Normalize(toward);
+        var side = stalls % 2 == 0 ? new Vector2(-toward.Y, toward.X) : new Vector2(toward.Y, -toward.X);
+        var candidate = position + new Vector3(side.X * UnstickSideStepMeters, 0f, side.Y * UnstickSideStepMeters);
+        var snapped = navmesh.NearestPointReachable(candidate, UnstickSideStepHalfExtentMeters, UnstickSideStepHalfExtentMeters);
+        return snapped is { } onMesh && Vector3.Distance(position, onMesh) >= UnstickStepMinMeters ? onMesh : null;
     }
 
     // Data-set spawn points can sit a little inside the terrain or above it; the floor under them is what the pathfinder accepts.

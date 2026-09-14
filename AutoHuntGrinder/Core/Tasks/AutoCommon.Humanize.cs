@@ -55,7 +55,7 @@ public abstract partial class AutoCommon
 
         if (Svc.Condition[ConditionFlag.Mounted])
         {
-            await DismountViaOp("humanize-dismount");
+            await SafeDismount("humanize-dismount");
         }
 
         var walks = await WanderUntil(cityTerritoryId, cityName, Environment.TickCount64 + durationMs);

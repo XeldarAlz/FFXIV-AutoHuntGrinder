@@ -37,6 +37,10 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
             session.RecordFault(exception, CancelToken);
             throw;
         }
+        finally
+        {
+            ReleaseCombatMovement("run");
+        }
     }
 
     private protected override void OnMarkPhaseChanged(HuntPhase phase)
@@ -68,6 +72,7 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
             return;
         }
 
+        await HoldCombatMovementAndSettle("run");
         while (session.HuntPassesCompleted < MaxHuntPasses)
         {
             var pass = session.HuntPassesCompleted + 1;

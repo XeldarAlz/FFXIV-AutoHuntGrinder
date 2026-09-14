@@ -212,6 +212,7 @@ internal sealed partial class AutoHuntController
     private static void ReleaseHelpers()
     {
         BossModIPC.Instance.ClearActive();
+        BossModIPC.Instance.ReleaseMovement();
         NavmeshIPC.Instance.Stop();
     }
 }

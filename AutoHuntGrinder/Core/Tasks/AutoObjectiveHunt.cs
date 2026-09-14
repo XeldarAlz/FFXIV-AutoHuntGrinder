@@ -38,6 +38,7 @@ internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress 
 
         if (BossModIPC.Instance.IsAvailable)
         {
+            await HoldCombatMovementAndSettle("run");
             return true;
         }
 

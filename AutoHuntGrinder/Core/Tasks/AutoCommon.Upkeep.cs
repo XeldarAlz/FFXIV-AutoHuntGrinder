@@ -150,7 +150,7 @@ public abstract partial class AutoCommon
     {
         if (Svc.Condition[ConditionFlag.Mounted])
         {
-            await DismountViaOp("upkeep-dismount-consume");
+            await SafeDismount("upkeep-dismount-consume");
         }
 
         if (Svc.Condition[ConditionFlag.Mounted] || Svc.Condition[ConditionFlag.InCombat])

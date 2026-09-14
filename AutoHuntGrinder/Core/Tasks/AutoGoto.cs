@@ -63,21 +63,29 @@ internal sealed class AutoGoto(uint territoryId, Vector3 destination) : AutoComm
     {
         var zoneName = TerritoryNames.Of(territoryId);
         Diag($"Goto: travelling to {zoneName} ({territoryId}) at {destination}.");
-        var arrived = await TravelTo(territoryId, destination, ArriveWithinMeters);
-        if (CancelToken.IsCancellationRequested)
+        await HoldCombatMovementAndSettle("goto");
+        try
         {
-            Diag("Goto: cancelled.");
-            return;
-        }
+            var arrived = await TravelTo(territoryId, destination, ArriveWithinMeters);
+            if (CancelToken.IsCancellationRequested)
+            {
+                Diag("Goto: cancelled.");
+                return;
+            }
 
-        if (!arrived)
+            if (!arrived)
+            {
+                Svc.Chat.PrintError($"{AhgConstants.LogPrefix} Goto: could not reach the spot in {zoneName}. The log has the details.");
+                return;
+            }
+
+            Status = "Arrived";
+            Svc.Chat.Print($"{AhgConstants.LogPrefix} Goto: arrived in {zoneName}.");
+        }
+        finally
         {
-            Svc.Chat.PrintError($"{AhgConstants.LogPrefix} Goto: could not reach the spot in {zoneName}. The log has the details.");
-            return;
+            ReleaseCombatMovement("goto");
         }
-
-        Status = "Arrived";
-        Svc.Chat.Print($"{AhgConstants.LogPrefix} Goto: arrived in {zoneName}.");
     }
 
     private static bool TryParse(string arguments, out uint territoryId, out Vector3 destination)

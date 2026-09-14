@@ -32,24 +32,32 @@ public sealed class AutoReturnToInn : AutoCommon
         }
 
         Svc.Chat.Print($"{AhgConstants.LogPrefix} Run complete. Retiring to the inn in {cityName}.");
-        var arrived = await TravelTo(inn.CityTerritoryId, inn.InnkeeperPosition, InnkeeperArrivalMeters);
-        if (CancelToken.IsCancellationRequested)
+        await HoldCombatMovementAndSettle("inn");
+        try
         {
-            return;
-        }
+            var arrived = await TravelTo(inn.CityTerritoryId, inn.InnkeeperPosition, InnkeeperArrivalMeters);
+            if (CancelToken.IsCancellationRequested)
+            {
+                return;
+            }
 
-        if (!arrived && Svc.ClientState.TerritoryType != inn.CityTerritoryId)
+            if (!arrived && Svc.ClientState.TerritoryType != inn.CityTerritoryId)
+            {
+                Warn($"Return to inn: could not reach {cityName}; staying where the run ended.");
+                return;
+            }
+
+            if (Svc.Condition[ConditionFlag.Mounted])
+            {
+                await SafeDismount("inn-dismount");
+            }
+
+            await EnterInn(inn, cityName);
+        }
+        finally
         {
-            Warn($"Return to inn: could not reach {cityName}; staying where the run ended.");
-            return;
+            ReleaseCombatMovement("inn");
         }
-
-        if (Svc.Condition[ConditionFlag.Mounted])
-        {
-            await DismountViaOp("inn-dismount");
-        }
-
-        await EnterInn(inn, cityName);
     }
 
     private async Task EnterInn(CityInn inn, string cityName)

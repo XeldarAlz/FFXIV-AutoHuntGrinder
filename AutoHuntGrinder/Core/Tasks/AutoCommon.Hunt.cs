@@ -161,6 +161,7 @@ public abstract partial class AutoCommon
     private async Task<MarkOutcome> RunHunt(MarkHuntContext hunt)
     {
         EnsureHuntCombatPreset();
+        HoldCombatMovement("hunt");
         var startedAt = Environment.TickCount64;
         var outcome = MarkOutcome.Cancelled;
         try
@@ -326,6 +327,11 @@ public abstract partial class AutoCommon
                 return stop;
             }
 
+            if (await RecoverIfOffMesh(hunt.TerritoryId, point, scope))
+            {
+                continue;
+            }
+
             var leg = await SweepToMarkPoint(hunt, point, scope);
             if (leg == MarkLeg.Sighted)
             {
@@ -378,7 +384,6 @@ public abstract partial class AutoCommon
         }
 
         MarkPhase = HuntPhase.Searching;
-        var ride = TerritoryAllowsMount(hunt.TerritoryId) && FreeToMount() && (Svc.Condition[ConditionFlag.Mounted] || DistanceTo(point) > MountMinMeters);
         var sighted = false;
         var nextScanAt = 0L;
 
@@ -401,28 +406,43 @@ public abstract partial class AutoCommon
             return sighted;
         }
 
-        Diag($"{scope}: {(ride ? "riding" : "walking")} {DistanceTo(point):F0}m to {FormatPosition(point)}");
-        var operation = new MoveOp(move => move.MoveInZone(point, MovementFor(ride, arriveWithin), StopCondition));
-        await RunCancellable(operation, TravelBudgetMs(point), scope, StuckDetector.MoveStallAbort(scope));
-        if (sighted)
+        var falseStarts = 0;
+        while (true)
         {
-            Diag($"{scope}: {hunt.Name} in view; stopping to fight it");
-            return MarkLeg.Sighted;
-        }
+            var ride = TerritoryAllowsMount(hunt.TerritoryId) && FreeToMount() && (Svc.Condition[ConditionFlag.Mounted] || DistanceTo(point) > MountMinMeters);
+            Diag($"{scope}: {(ride ? "riding" : "walking")} {DistanceTo(point):F0}m to {FormatPosition(point)}");
+            var startedAt = Environment.TickCount64;
+            var operation = new MoveOp(move => move.MoveInZone(point, MovementFor(ride, arriveWithin), StopCondition));
+            var completed = await RunCancellable(operation, TravelBudgetMs(point), scope, StuckDetector.MoveStallAbort(scope));
+            if (sighted)
+            {
+                Diag($"{scope}: {hunt.Name} in view; stopping to fight it");
+                return MarkLeg.Sighted;
+            }
 
-        if (WithinReach(point, arriveWithin))
-        {
-            return MarkLeg.Arrived;
-        }
+            if (WithinReach(point, arriveWithin))
+            {
+                return MarkLeg.Arrived;
+            }
 
-        if (CancelToken.IsCancellationRequested)
-        {
-            return MarkLeg.Failed;
-        }
+            if (CancelToken.IsCancellationRequested)
+            {
+                return MarkLeg.Failed;
+            }
 
-        if (operation.Fault is { } fault)
-        {
-            Diag($"{scope}: the direct leg faulted: {fault.Message}");
+            if (operation.Fault is { } fault)
+            {
+                Diag($"{scope}: the direct leg faulted: {fault.Message}");
+            }
+
+            var falseStart = completed && operation.Fault is null && Environment.TickCount64 - startedAt < StuckDetector.FalseStartMs;
+            if (!falseStart || falseStarts >= MaxFalseStarts)
+            {
+                break;
+            }
+
+            falseStarts++;
+            await RecoverFromFalseStart(scope, falseStarts);
         }
 
         Diag($"{scope}: the direct leg ended {DistanceTo(point):F0}m short; using full travel");

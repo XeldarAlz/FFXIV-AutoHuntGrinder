@@ -35,6 +35,7 @@ internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progr
         finally
         {
             EndTracking();
+            ReleaseCombatMovement("run");
         }
     }
 

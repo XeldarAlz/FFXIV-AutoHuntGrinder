@@ -62,7 +62,7 @@ public abstract partial class AutoCommon
 
         if (Svc.Condition[ConditionFlag.Mounted])
         {
-            await DismountViaOp("repair-dismount");
+            await SafeDismount("repair-dismount");
         }
 
         Status = "Opening Repair";
@@ -106,7 +106,7 @@ public abstract partial class AutoCommon
 
         if (Svc.Condition[ConditionFlag.Mounted])
         {
-            await DismountViaOp("repair-dismount-mender");
+            await SafeDismount("repair-dismount-mender");
         }
 
         if (RepairOps.FindNearestObjectByBaseId(mender.DataId) is not { } npc)

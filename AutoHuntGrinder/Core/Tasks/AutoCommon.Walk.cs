@@ -32,6 +32,6 @@ public abstract partial class AutoCommon
     }
 
     // Its own cancellable operation, so a landing that never happens cannot park the run.
-    internal Task<bool> DismountViaOp(string label)
-        => RunCancellable(new MoveOp(move => move.DismountNow()), DismountWatchdogMs, label);
+    internal Task<bool> DismountViaOp(string label, int watchdogMs = DismountWatchdogMs, Func<bool>? abortIf = null)
+        => RunCancellable(new MoveOp(move => move.DismountNow()), watchdogMs, label, abortIf);
 }

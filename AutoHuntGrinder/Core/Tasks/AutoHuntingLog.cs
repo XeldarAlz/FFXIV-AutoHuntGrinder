@@ -42,6 +42,10 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
             RunSession.RecordFault(exception, CancelToken);
             throw;
         }
+        finally
+        {
+            ReleaseCombatMovement("run");
+        }
     }
 
     private async Task Hunt()

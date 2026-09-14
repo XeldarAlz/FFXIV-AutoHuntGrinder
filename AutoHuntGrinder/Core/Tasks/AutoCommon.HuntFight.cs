@@ -45,7 +45,7 @@ public abstract partial class AutoCommon
     private bool huntPresetEnsured;
     private bool huntPresetRefusalLogged;
 
-    private enum MarkFight { Reached, Counted, NotCounted, Lost, Unreachable, KnockedOut, Cancelled }
+    private enum MarkFight { Reached, Counted, NotCounted, Lost, Unreachable, Relocated, KnockedOut, Cancelled }
 
     private async Task<MarkOutcome?> FightVisibleMarks(MarkHuntContext hunt)
     {
@@ -80,6 +80,9 @@ public abstract partial class AutoCommon
                 case MarkFight.Unreachable:
                     hunt.Ignore(sighting.GameObjectId);
                     break;
+                // A teleport out from under the world moved the character; the sweep looks again from where it landed.
+                case MarkFight.Relocated:
+                    return null;
                 case MarkFight.KnockedOut:
                     return MarkOutcome.Died;
                 case MarkFight.Cancelled:
@@ -147,7 +150,9 @@ public abstract partial class AutoCommon
     private async Task<MarkFight> CloseOnMark(MarkHuntContext hunt, ulong markId, string scope)
     {
         var approach = ApproachMeters();
-        for (var leg = 1; leg <= MaxMarkApproachLegs; leg++)
+        var legs = 0;
+        var falseStarts = 0;
+        while (legs < MaxMarkApproachLegs)
         {
             if (CancelToken.IsCancellationRequested)
             {
@@ -164,33 +169,49 @@ public abstract partial class AutoCommon
                 return MarkFight.Lost;
             }
 
+            var destination = MarkFloorNear(live.Position);
+            if (await RecoverIfOffMesh(hunt.TerritoryId, destination, scope))
+            {
+                return MarkFight.Relocated;
+            }
+
             var mounted = Svc.Condition[ConditionFlag.Mounted];
             if (live.DistanceToHitbox <= approach || (mounted && live.DistanceToHitbox <= MarkLandingMeters))
             {
-                if (mounted)
+                if (mounted && !await LandAndDismount(destination, $"{scope}-dismount"))
                 {
-                    await DismountViaOp($"{scope}-dismount");
+                    return MarkFight.Unreachable;
                 }
 
-                if (live.DistanceToHitbox <= approach)
+                if (TryTrackMark(markId, out live) && live.DistanceToHitbox <= approach)
                 {
                     return MarkFight.Reached;
                 }
 
+                legs++;
                 continue;
             }
 
             var ride = TerritoryAllowsMount(hunt.TerritoryId) && FreeToMount() && (mounted || live.DistanceToHitbox > MarkRideMinMeters);
             var stopAt = ride ? MarkLandingMeters : approach;
-            var destination = MarkFloorNear(live.Position);
-            var legScope = $"{scope}-approach#{leg}";
+            var legScope = $"{scope}-approach#{legs + 1}";
             Diag($"{legScope}: {(ride ? "riding" : "walking")} toward {hunt.Name}, {live.DistanceToHitbox:F0}m out");
+            var startedAt = Environment.TickCount64;
             var operation = new MoveOp(move => move.MoveInZone(destination, MovementFor(ride, stopAt), StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel)));
-            await RunCancellable(operation, MarkApproachWatchdogMs, legScope, StuckDetector.MoveStallAbort(legScope));
+            var completed = await RunCancellable(operation, MarkApproachWatchdogMs, legScope, StuckDetector.MoveStallAbort(legScope));
             if (operation.Fault is { } fault)
             {
                 Diag($"{legScope}: faulted: {fault.Message}");
             }
+
+            if (falseStarts < MaxFalseStarts && WasFalseStart(completed, operation, startedAt, markId, stopAt, destination))
+            {
+                falseStarts++;
+                await RecoverFromFalseStart(legScope, falseStarts);
+                continue;
+            }
+
+            legs++;
         }
 
         if (!TryTrackMark(markId, out var last) || last.DistanceToHitbox > approach)
@@ -198,12 +219,25 @@ public abstract partial class AutoCommon
             return MarkFight.Unreachable;
         }
 
-        if (Svc.Condition[ConditionFlag.Mounted])
+        if (Svc.Condition[ConditionFlag.Mounted] && !await LandAndDismount(MarkFloorNear(last.Position), $"{scope}-dismount"))
         {
-            await DismountViaOp($"{scope}-dismount");
+            return MarkFight.Unreachable;
         }
 
         return MarkFight.Reached;
+    }
+
+    // A leg that ended at once, with the mark still where it was aimed and still out of reach, never moved the character.
+    private static bool WasFalseStart(bool completed, MoveOp operation, long startedAt, ulong markId, float stopAt, Vector3 destination)
+    {
+        if (!completed || operation.Fault is not null || Environment.TickCount64 - startedAt >= StuckDetector.FalseStartMs)
+        {
+            return false;
+        }
+
+        return TryTrackMark(markId, out var live)
+            && live.DistanceToHitbox > stopAt
+            && GroundDistance.Between(live.Position, destination) <= MarkDriftMeters;
     }
 
     // Keeps the mark targeted and the preset active until the bill counts the kill. A kill only counts once the bill's
@@ -223,6 +257,8 @@ public abstract partial class AutoCommon
         var bounces = 0;
         var outOfReachSince = 0L;
         var repositions = 0;
+        // The fight is the combat plugin's to move in; the hold comes back the moment it is over.
+        ReleaseCombatMovement(scope);
         try
         {
             while (true)
@@ -267,7 +303,7 @@ public abstract partial class AutoCommon
                 if (Svc.Condition[ConditionFlag.Mounted])
                 {
                     BossModIPC.Instance.ClearActive();
-                    await DismountViaOp($"{scope}-dismount");
+                    await SafeDismount($"{scope}-dismount");
                     continue;
                 }
 
@@ -329,6 +365,7 @@ public abstract partial class AutoCommon
         finally
         {
             BossModIPC.Instance.ClearActive();
+            HoldCombatMovement(scope);
         }
     }
 
@@ -361,6 +398,7 @@ public abstract partial class AutoCommon
         Status = "Fighting off what is still attacking";
         Diag($"{scope}: still in combat ({ConditionTag()}); fighting off whatever is attacking");
         var deadline = Environment.TickCount64 + MarkAggroClearMs;
+        ReleaseCombatMovement(scope);
         try
         {
             while (Svc.Condition[ConditionFlag.InCombat] && Environment.TickCount64 < deadline)
@@ -373,7 +411,7 @@ public abstract partial class AutoCommon
                 if (Svc.Condition[ConditionFlag.Mounted])
                 {
                     BossModIPC.Instance.ClearActive();
-                    await DismountViaOp($"{scope}-aggro-dismount");
+                    await SafeDismount($"{scope}-aggro-dismount");
                 }
 
                 AssertHuntPresetActive();
@@ -388,6 +426,7 @@ public abstract partial class AutoCommon
         finally
         {
             BossModIPC.Instance.ClearActive();
+            HoldCombatMovement(scope);
         }
 
         if (Svc.Condition[ConditionFlag.InCombat])
@@ -407,6 +446,7 @@ public abstract partial class AutoCommon
         var destination = MarkFloorNear(live.Position);
         Diag($"{scope}: {hunt.Name} stayed {live.DistanceToHitbox:F0}m away, out of reach; walking in");
         var parked = ParkHuntPresetMovement();
+        HoldCombatMovement(scope);
         try
         {
             var operation = new MoveOp(move => move.MoveInZone(destination, walkMovement.WithTolerance(approach), StopWhenMarkWithin(markId, approach, destination, hunt.FightLabel)));
@@ -418,6 +458,7 @@ public abstract partial class AutoCommon
         }
         finally
         {
+            ReleaseCombatMovement(scope);
             if (parked)
             {
                 ResumeHuntPresetMovement();
