@@ -1,8 +1,6 @@
 using AutoHuntGrinder.Core.External;
-using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Windows.Components;
-using AutoHuntGrinder.Windows.Sections;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using System.Numerics;
@@ -65,18 +63,15 @@ internal static class ActionDock
     private static void DrawStart(Plugin plugin, float innerWidth)
     {
         var configuration = plugin.Configuration;
-        var startList = BillSelection.ResolveStartList(configuration);
+        var mode = configuration.Mode;
+        var plan = HuntLauncher.Assess(configuration, mode);
         var dependenciesReady = ExternalPlugins.AllRequiredInstalled();
-        var canStart = startList.Count > 0 && dependenciesReady;
-        var reason = !dependenciesReady ? Loc.T(L.Hunt.ReasonInstall)
-            : BillSelection.CountSelected(configuration) == 0 ? Loc.T(L.Hunt.ReasonPickBill)
-            : startList.Count == 0 ? Loc.T(L.Hunt.ReasonAllDone)
-            : string.Empty;
-        var sublabel = startList.Count > 0 ? ReadyState.PlanSummary(startList) : Loc.T(L.Hunt.BillsNone);
+        var canStart = plan.Readiness == HuntLauncher.Readiness.Ready && dependenciesReady;
+        var reason = !dependenciesReady ? Loc.T(L.Hunt.ReasonInstall) : HuntLauncher.Reason(plan);
 
-        if (StartButton.Draw(sublabel, canStart, reason, innerWidth))
+        if (StartButton.Draw(HuntLauncher.Sublabel(configuration, plan), canStart, reason, innerWidth))
         {
-            plugin.Controller.Start(startList);
+            HuntLauncher.Start(mode);
         }
     }
 }
