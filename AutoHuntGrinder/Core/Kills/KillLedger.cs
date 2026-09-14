@@ -1,4 +1,6 @@
+using AutoHuntGrinder.Core.Marks;
 using Dalamud.Game.Chat;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin.Services;
 using ECommons.DalamudServices;
@@ -7,12 +9,15 @@ using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using CSCharacter = FFXIVClientStructs.FFXIV.Client.Game.Character.Character;
 using CSObjectKind = FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind;
+using CSTargetSystem = FFXIVClientStructs.FFXIV.Client.Game.Control.TargetSystem;
+using CSUIState = FFXIVClientStructs.FFXIV.Client.Game.UI.UIState;
 
 namespace AutoHuntGrinder.Core.Kills;
 
 // The game keeps no counter for an arbitrary mob, so two signals are combined: a tracked mob we tagged that is later
 // seen down (death), and a "You defeat" line naming a tracked mob (log). A credit waits up to FoldWindowMs for its
-// other half, so one kill seen both ways credits once.
+// other half, so one kill seen both ways credits once. A hunt mark credits everyone who fights it, whoever tagged it, so
+// its death counts on our part in the fight instead of on its tag.
 internal sealed unsafe class KillLedger : IDisposable
 {
     private const int WatchCapacity = 16;
@@ -21,6 +26,8 @@ internal sealed unsafe class KillLedger : IDisposable
     private const int PendingCapacity = 16;
     // A Hunting Log rank names at most 40 targets (10 entries of up to 4).
     private const int InitialInterestCapacity = 64;
+    // The game's enemy list holds 32 entries.
+    private const int HaterCapacity = 32;
     private const long ScanIntervalMs = 200;
     private const long FoldWindowMs = 2_000;
     // A slot for a mob that left object range is dropped, so it cannot hold a name or a slot forever.
@@ -44,14 +51,19 @@ internal sealed unsafe class KillLedger : IDisposable
     private readonly TrackedMob[] interestSlots = new TrackedMob[InterestTrackCapacity];
     private readonly ulong[] creditedIds = new ulong[CreditedRingCapacity];
     private readonly PendingCredit[] pending = new PendingCredit[PendingCapacity];
+    private readonly uint[] haterEntityIds = new uint[HaterCapacity];
 
     private uint[] interestNames = new uint[InitialInterestCapacity];
+    private bool[] interestMarks = new bool[InitialInterestCapacity];
     private int interestCount;
+    private int haterCount;
     private int creditedCursor;
     private int pendingCount;
     private long nextScanAtMs;
     private ulong localPlayerId;
+    private ulong localPlayerTargetId;
     private uint localPlayerEntityId;
+    private bool localPlayerInCombat;
     private bool huntingLogChangePending;
 
     public KillLedger()
@@ -81,12 +93,21 @@ internal sealed unsafe class KillLedger : IDisposable
         Both = Death | Log,
     }
 
-    private readonly record struct TrackedMob(ulong GameObjectId, long TrackedAtMs, long SeenAtMs, uint NameId, bool TaggedByUs)
+    // Kept once seen, because the enemy list may drop a mark the moment it dies.
+    [Flags]
+    private enum MarkParticipation : byte
+    {
+        None = 0,
+        HaterList = 1,
+        EngineFight = 2,
+    }
+
+    private readonly record struct TrackedMob(ulong GameObjectId, long TrackedAtMs, long SeenAtMs, uint NameId, bool TaggedByUs, bool IsHuntMark, MarkParticipation Participation)
     {
         public bool InUse => GameObjectId != 0;
     }
 
-    private readonly record struct PendingCredit(ulong GameObjectId, long FirstSignalAtMs, uint NameId, KillSignal Signals);
+    private readonly record struct PendingCredit(ulong GameObjectId, long FirstSignalAtMs, uint NameId, KillSignal Signals, MarkParticipation Participation);
 
     public void Dispose()
     {
@@ -102,17 +123,29 @@ internal sealed unsafe class KillLedger : IDisposable
         }
 
         var taggedByUs = false;
+        var participation = MarkParticipation.None;
         var interestIndex = FindSlot(interestSlots, gameObjectId);
         if (interestIndex >= 0)
         {
-            taggedByUs = interestSlots[interestIndex].NameId == nameId && interestSlots[interestIndex].TaggedByUs;
+            var tracked = interestSlots[interestIndex];
+            if (tracked.NameId == nameId)
+            {
+                taggedByUs = tracked.TaggedByUs;
+                participation = tracked.Participation;
+            }
+
             interestSlots[interestIndex] = default;
         }
 
         var watchIndex = FindSlot(watchSlots, gameObjectId);
         if (watchIndex >= 0)
         {
-            taggedByUs |= watchSlots[watchIndex].NameId == nameId && watchSlots[watchIndex].TaggedByUs;
+            var watched = watchSlots[watchIndex];
+            if (watched.NameId == nameId)
+            {
+                taggedByUs |= watched.TaggedByUs;
+                participation |= watched.Participation;
+            }
         }
         else
         {
@@ -120,7 +153,7 @@ internal sealed unsafe class KillLedger : IDisposable
         }
 
         var now = Environment.TickCount64;
-        watchSlots[watchIndex] = new TrackedMob(gameObjectId, now, now, nameId, taggedByUs);
+        watchSlots[watchIndex] = new TrackedMob(gameObjectId, now, now, nameId, taggedByUs, HuntMarkRegistry.IsHuntMark(nameId), participation);
     }
 
     public void SetInterest(ReadOnlySpan<uint> nameIds)
@@ -128,11 +161,17 @@ internal sealed unsafe class KillLedger : IDisposable
         if (interestNames.Length < nameIds.Length)
         {
             interestNames = new uint[nameIds.Length];
+            interestMarks = new bool[nameIds.Length];
         }
 
         nameIds.CopyTo(interestNames);
         interestCount = nameIds.Length;
         Array.Sort(interestNames, 0, interestCount);
+        for (var index = 0; index < interestCount; index++)
+        {
+            interestMarks[index] = HuntMarkRegistry.IsHuntMark(interestNames[index]);
+        }
+
         for (var index = 0; index < interestSlots.Length; index++)
         {
             if (interestSlots[index].InUse && !IsInterest(interestSlots[index].NameId))
@@ -218,6 +257,7 @@ internal sealed unsafe class KillLedger : IDisposable
 
         localPlayerId = player.GameObjectId;
         localPlayerEntityId = player.EntityId;
+        ReadParticipationState();
         for (var objectIndex = 0; objectIndex < objects.Length; objectIndex++)
         {
             if (objects[objectIndex] is not IBattleNpc npc)
@@ -227,13 +267,20 @@ internal sealed unsafe class KillLedger : IDisposable
 
             var gameObjectId = npc.GameObjectId;
             var nameId = npc.NameId;
-            if (TryObserve(watchSlots, npc, gameObjectId, nameId, now))
+            if (TryObserve(watchSlots, npc, gameObjectId, nameId, now, engagedByEngine: true))
             {
                 continue;
             }
 
-            if (!IsInterest(nameId) || TryObserve(interestSlots, npc, gameObjectId, nameId, now))
+            var interestIndex = InterestIndex(nameId);
+            if (interestIndex < 0 || TryObserve(interestSlots, npc, gameObjectId, nameId, now, engagedByEngine: false))
             {
+                continue;
+            }
+
+            if (interestMarks[interestIndex])
+            {
+                TrackHuntMark(npc, gameObjectId, nameId, now);
                 continue;
             }
 
@@ -246,7 +293,7 @@ internal sealed unsafe class KillLedger : IDisposable
 
     // The tag is recorded while the mob lives because it may clear once the mob dies; a tag still readable on the
     // body counts too, which catches a mob that went from untouched to dead between two scans.
-    private bool TryObserve(TrackedMob[] slots, IBattleNpc npc, ulong gameObjectId, uint nameId, long now)
+    private bool TryObserve(TrackedMob[] slots, IBattleNpc npc, ulong gameObjectId, uint nameId, long now, bool engagedByEngine)
     {
         var index = FindSlot(slots, gameObjectId);
         if (index < 0)
@@ -262,13 +309,19 @@ internal sealed unsafe class KillLedger : IDisposable
             return false;
         }
 
+        if (slot.IsHuntMark)
+        {
+            ObserveHuntMark(slots, index, npc, now, engagedByEngine);
+            return true;
+        }
+
         var owner = ReadTag(npc, out var tagType, out var taggerId);
         if (IsDown(npc))
         {
             slots[index] = default;
             if (IsOurs(owner) || (owner == TagOwner.Nobody && slot.TaggedByUs))
             {
-                RecordDeath(gameObjectId, nameId, now);
+                RecordDeath(gameObjectId, nameId, now, MarkParticipation.None);
             }
             else
             {
@@ -293,6 +346,31 @@ internal sealed unsafe class KillLedger : IDisposable
         return true;
     }
 
+    private void ObserveHuntMark(TrackedMob[] slots, int index, IBattleNpc npc, long now, bool engagedByEngine)
+    {
+        var slot = slots[index];
+        var participation = slot.Participation | ReadParticipation(npc, slot.GameObjectId, engagedByEngine);
+        if (IsDown(npc))
+        {
+            slots[index] = default;
+            if (participation == MarkParticipation.None)
+            {
+                Diag($"Kill ledger: hunt mark BNpcName {slot.NameId}, object {slot.GameObjectId:X}, went down with no part of ours in the fight; no death credit");
+                return;
+            }
+
+            RecordDeath(slot.GameObjectId, slot.NameId, now, participation);
+            return;
+        }
+
+        if (participation != slot.Participation)
+        {
+            Diag($"Kill ledger: hunt mark BNpcName {slot.NameId}, object {slot.GameObjectId:X}, now shows our part in the fight ({DescribeParticipation(participation)})");
+        }
+
+        slots[index] = slot with { SeenAtMs = now, Participation = participation };
+    }
+
     private void TrackIfTaggedByUs(IBattleNpc npc, ulong gameObjectId, uint nameId, long now)
     {
         if (IsDown(npc))
@@ -306,8 +384,71 @@ internal sealed unsafe class KillLedger : IDisposable
             return;
         }
 
-        interestSlots[ClaimSlot(interestSlots)] = new TrackedMob(gameObjectId, now, now, nameId, true);
+        interestSlots[ClaimSlot(interestSlots)] = new TrackedMob(gameObjectId, now, now, nameId, TaggedByUs: true, IsHuntMark: false, MarkParticipation.None);
         Diag($"Kill ledger: tracking BNpcName {nameId}, object {gameObjectId:X}, {DescribeTag(owner)} (tag type {tagType}, tagger {taggerId:X})");
+    }
+
+    // Every live copy of a listed hunt mark is followed, tagged or not, since whoever pulled it, fighting it earns the kill.
+    private void TrackHuntMark(IBattleNpc npc, ulong gameObjectId, uint nameId, long now)
+    {
+        if (IsDown(npc))
+        {
+            return;
+        }
+
+        var participation = ReadParticipation(npc, gameObjectId, engagedByEngine: false);
+        interestSlots[ClaimSlot(interestSlots)] = new TrackedMob(gameObjectId, now, now, nameId, TaggedByUs: false, IsHuntMark: true, participation);
+        Diag($"Kill ledger: tracking hunt mark BNpcName {nameId}, object {gameObjectId:X} ({DescribeParticipation(participation)})");
+    }
+
+    // Read once per scan, then checked against every tracked hunt mark.
+    private void ReadParticipationState()
+    {
+        localPlayerInCombat = Svc.Condition[ConditionFlag.InCombat];
+        var targetSystem = CSTargetSystem.Instance();
+        var target = targetSystem == null ? null : targetSystem->Target;
+        localPlayerTargetId = target == null ? 0 : target->GetGameObjectId().Id;
+        haterCount = 0;
+        var uiState = CSUIState.Instance();
+        if (uiState == null)
+        {
+            return;
+        }
+
+        var haters = uiState->Hater.Haters;
+        var count = Math.Clamp(uiState->Hater.HaterCount, 0, Math.Min(haters.Length, haterEntityIds.Length));
+        for (var index = 0; index < count; index++)
+        {
+            haterEntityIds[index] = haters[index].EntityId;
+        }
+
+        haterCount = count;
+    }
+
+    // The engine's own fight counts only while the player is in combat with the mark as the hard target, so an
+    // engagement it has since walked away from does not.
+    private MarkParticipation ReadParticipation(IBattleNpc npc, ulong gameObjectId, bool engagedByEngine)
+    {
+        var participation = IsHater(npc.EntityId) ? MarkParticipation.HaterList : MarkParticipation.None;
+        if (engagedByEngine && localPlayerInCombat && localPlayerTargetId == gameObjectId)
+        {
+            participation |= MarkParticipation.EngineFight;
+        }
+
+        return participation;
+    }
+
+    private bool IsHater(uint entityId)
+    {
+        for (var index = 0; index < haterCount; index++)
+        {
+            if (haterEntityIds[index] == entityId)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private TagOwner ReadTag(IBattleNpc npc, out byte tagType, out ulong taggerId)
@@ -383,7 +524,7 @@ internal sealed unsafe class KillLedger : IDisposable
         return groups != null && groups->MainGroup.IsEntityIdInParty(ownerId);
     }
 
-    private void RecordDeath(ulong gameObjectId, uint nameId, long now)
+    private void RecordDeath(ulong gameObjectId, uint nameId, long now, MarkParticipation participation)
     {
         if (WasCredited(gameObjectId))
         {
@@ -396,12 +537,12 @@ internal sealed unsafe class KillLedger : IDisposable
             var credit = pending[index];
             if (credit.NameId == nameId && credit.Signals == KillSignal.Log)
             {
-                pending[index] = credit with { GameObjectId = gameObjectId, Signals = KillSignal.Both };
+                pending[index] = credit with { GameObjectId = gameObjectId, Signals = KillSignal.Both, Participation = participation };
                 return;
             }
         }
 
-        AddPending(new PendingCredit(gameObjectId, now, nameId, KillSignal.Death));
+        AddPending(new PendingCredit(gameObjectId, now, nameId, KillSignal.Death, participation));
     }
 
     private void RecordLog(uint nameId, long now)
@@ -416,7 +557,7 @@ internal sealed unsafe class KillLedger : IDisposable
             }
         }
 
-        AddPending(new PendingCredit(0, now, nameId, KillSignal.Log));
+        AddPending(new PendingCredit(0, now, nameId, KillSignal.Log, MarkParticipation.None));
     }
 
     private void AddPending(PendingCredit credit)
@@ -462,9 +603,7 @@ internal sealed unsafe class KillLedger : IDisposable
 
     private void Emit(PendingCredit credit)
     {
-        Diag(credit.GameObjectId == 0
-            ? $"Kill ledger: credited BNpcName {credit.NameId} (log)"
-            : $"Kill ledger: credited BNpcName {credit.NameId}, object {credit.GameObjectId:X} ({(credit.Signals == KillSignal.Both ? "both" : "death")})");
+        Diag(DescribeCredit(credit));
         Credited?.Invoke(credit.NameId);
     }
 
@@ -487,8 +626,18 @@ internal sealed unsafe class KillLedger : IDisposable
         creditedCursor = (creditedCursor + 1) % creditedIds.Length;
     }
 
-    private bool IsInterest(uint nameId)
-        => interestCount > 0 && Array.BinarySearch(interestNames, 0, interestCount, nameId) >= 0;
+    private int InterestIndex(uint nameId)
+    {
+        if (interestCount == 0)
+        {
+            return -1;
+        }
+
+        var index = Array.BinarySearch(interestNames, 0, interestCount, nameId);
+        return index < 0 ? -1 : index;
+    }
+
+    private bool IsInterest(uint nameId) => InterestIndex(nameId) >= 0;
 
     private bool IsTrackedName(uint nameId)
     {
@@ -517,6 +666,33 @@ internal sealed unsafe class KillLedger : IDisposable
         TagOwner.Others => "tagged by someone else",
         _ => "untagged",
     };
+
+    private static string DescribeParticipation(MarkParticipation participation) => participation switch
+    {
+        MarkParticipation.HaterList => "on our enemy list",
+        MarkParticipation.EngineFight => "fought by the engine in combat",
+        MarkParticipation.HaterList | MarkParticipation.EngineFight => "on our enemy list and fought by the engine in combat",
+        _ => "no part of ours yet",
+    };
+
+    // A hunt mark's line names what showed our part in the kill, so each credit can be traced to its signal.
+    private static string DescribeCredit(in PendingCredit credit)
+    {
+        if (credit.GameObjectId == 0)
+        {
+            return HuntMarkRegistry.IsHuntMark(credit.NameId)
+                ? $"Kill ledger: credited hunt mark BNpcName {credit.NameId} (log message {DefeatLogMessageId} alone)"
+                : $"Kill ledger: credited BNpcName {credit.NameId} (log)";
+        }
+
+        if (credit.Participation == MarkParticipation.None)
+        {
+            return $"Kill ledger: credited BNpcName {credit.NameId}, object {credit.GameObjectId:X} ({(credit.Signals == KillSignal.Both ? "both" : "death")})";
+        }
+
+        var signals = credit.Signals == KillSignal.Both ? $"death and log message {DefeatLogMessageId}" : "death";
+        return $"Kill ledger: credited hunt mark BNpcName {credit.NameId}, object {credit.GameObjectId:X} ({signals}; {DescribeParticipation(credit.Participation)})";
+    }
 
     private static bool IsHuntingLogMessage(uint logMessageId)
         => logMessageId is >= HuntingLogFirstProgressMessageId and <= HuntingLogLastProgressMessageId

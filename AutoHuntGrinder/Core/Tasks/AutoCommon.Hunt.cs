@@ -1,5 +1,6 @@
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
+using AutoHuntGrinder.Core.Marks;
 using AutoHuntGrinder.Core.Spawns;
 using AutoHuntGrinder.Core.Travel;
 using Dalamud.Game.ClientState.Conditions;
@@ -17,6 +18,10 @@ public abstract partial class AutoCommon
     private const int DailyMarkSearchLaps = 2;
     // An elite mark is a single roamer; circling its points a few times is how it turns up.
     private const int EliteMarkSearchLaps = 4;
+    // An A rank hunt mark respawns over hours, so two laps over its few known points tell whether it is up.
+    private const int RankAMarkSearchLaps = 2;
+    // An S rank hunt mark is up only after an in-game trigger, so one look at each known point settles it.
+    private const int RankSMarkSearchLaps = 1;
     // A sub-area point is only its map label, often away from where the mobs roam, so one stop there is rarely enough.
     private const int AreaSearchLaps = 4;
     // Spawn points are approximate, and a mark near one is in view long before the point itself.
@@ -99,7 +104,8 @@ public abstract partial class AutoCommon
     }
 
     // A Hunting Log target or custom mob is hunted like a daily mark: its spawn points in one territory, never inside a
-    // FATE, and only copies no other party has claimed.
+    // FATE, and only copies no other party has claimed. A hunt mark on the custom list credits everyone who fights it,
+    // so no copy is passed over, and its rank sets how long the search runs.
     protected async Task<MarkOutcome> HuntQuarry(HuntObjective objective)
     {
         var name = ObjectiveProgress.Name(objective);
@@ -129,6 +135,11 @@ public abstract partial class AutoCommon
             var where = objective.TerritoryId != 0 ? $" in {TerritoryNames.Of(objective.TerritoryId)}" : string.Empty;
             Warn($"Hunt: no spawn points are known for {name}{where}; skipping it");
             return MarkOutcome.Unsupported;
+        }
+
+        if (hunt.MarkRank is { } rank)
+        {
+            Diag($"Hunt: {name} is a rank {rank} hunt mark; claimed copies are fought too, over up to {hunt.SearchLaps} lap(s) of {hunt.SpawnPoints.Length} point(s) within {hunt.SearchBudgetMs / TimeUnits.MillisecondsPerSecond}s");
         }
 
         return await RunHunt(hunt);
@@ -691,6 +702,7 @@ public abstract partial class AutoCommon
             {
                 Objective = objective,
                 IsQuarry = true,
+                MarkRank = HuntMarkRankOf(objective),
             };
 
         public string Name { get; }
@@ -711,6 +723,10 @@ public abstract partial class AutoCommon
 
         public bool IsQuarry { get; private init; }
 
+        public HuntMarkRank? MarkRank { get; private init; }
+
+        public bool IsHuntMark => MarkRank.HasValue;
+
         public uint TerritoryId { get; }
 
         public MarkFate Fate { get; }
@@ -725,9 +741,9 @@ public abstract partial class AutoCommon
 
         public bool AreaPoints { get; }
 
-        // FATE mobs and hunt Notorious Monsters, which every elite mark is, credit everyone who fights them; only an
-        // ordinary mob belongs to the party that pulled it.
-        public bool HonorsClaims => FateId == 0 && !Elite;
+        // FATE mobs and hunt Notorious Monsters, which every elite mark and every hunt mark is, credit everyone who fights
+        // them; only an ordinary mob belongs to the party that pulled it.
+        public bool HonorsClaims => FateId == 0 && !Elite && !IsHuntMark;
 
         // The game keeps no counter for a custom mob, so the kill ledger has to see it fall.
         public bool WatchesKills => IsQuarry && Objective.Source == ObjectiveSource.Custom;
@@ -739,9 +755,18 @@ public abstract partial class AutoCommon
 
         public int PointSettleMs => AreaPoints ? AreaPointSettleMs : MarkPointSettleMs;
 
-        public int SearchBudgetMs => Elite ? EliteMarkSearchBudgetMs : DailyMarkSearchBudgetMs;
+        // A rank B hunt mark respawns quickly and is searched like a daily mark; A and S ranks patrol like elite marks.
+        public int SearchBudgetMs => (Elite || MarkRank is HuntMarkRank.A or HuntMarkRank.S) ? EliteMarkSearchBudgetMs : DailyMarkSearchBudgetMs;
 
-        public int SearchLaps => Elite ? EliteMarkSearchLaps : AreaPoints ? AreaSearchLaps : DailyMarkSearchLaps;
+        public int SearchLaps => MarkRank switch
+        {
+            HuntMarkRank.A => RankAMarkSearchLaps,
+            HuntMarkRank.S => RankSMarkSearchLaps,
+            _ => Elite ? EliteMarkSearchLaps : AreaPoints ? AreaSearchLaps : DailyMarkSearchLaps,
+        };
+
+        // Every hunt mark is a Notorious Monster with an elite's health, as the weekly elite marks are.
+        public int FightBudgetMs => (Elite || IsHuntMark) ? EliteMarkFightBudgetMs : DailyMarkFightBudgetMs;
 
         public bool ClaimSkipLogged { get; set; }
 
@@ -779,5 +804,9 @@ public abstract partial class AutoCommon
             ignoredNext = (ignoredNext + 1) % MaxIgnoredInstances;
             ignoredCount = Math.Min(ignoredCount + 1, MaxIgnoredInstances);
         }
+
+        // Only a custom objective is hunted by mark rules; the Hunting Log names ordinary mobs and keeps the ordinary ones.
+        private static HuntMarkRank? HuntMarkRankOf(in HuntObjective objective)
+            => objective.Source == ObjectiveSource.Custom && HuntMarkRegistry.TryGet(objective.NameId, out var mark) ? mark.Rank : null;
     }
 }
