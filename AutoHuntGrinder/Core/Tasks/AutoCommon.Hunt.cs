@@ -1,5 +1,6 @@
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
+using AutoHuntGrinder.Core.Spawns;
 using AutoHuntGrinder.Core.Travel;
 using Dalamud.Game.ClientState.Conditions;
 using ECommons.DalamudServices;
@@ -16,10 +17,16 @@ public abstract partial class AutoCommon
     private const int DailyMarkSearchLaps = 2;
     // An elite mark is a single roamer; circling its points a few times is how it turns up.
     private const int EliteMarkSearchLaps = 4;
+    // A sub-area point is only its map label, often away from where the mobs roam, so one stop there is rarely enough.
+    private const int AreaSearchLaps = 4;
     // Spawn points are approximate, and a mark near one is in view long before the point itself.
     private const float MarkSweepArriveMeters = 20f;
+    // Anywhere inside the sub-area will do; its label is not where the mobs stand.
+    private const float AreaSweepArriveMeters = 45f;
     private const int MarkScanIntervalMs = 250;
     private const int MarkPointSettleMs = 1_500;
+    // A sub-area's mobs are spread over it on respawn timers, so the character waits long enough for one to wander into view.
+    private const int AreaPointSettleMs = 8_000;
     private const int MaxMarkSightingsPerPoint = 6;
     private const int MaxMarkKnockouts = 3;
     private const int MaxUncountedMarkKills = 3;
@@ -28,6 +35,8 @@ public abstract partial class AutoCommon
     private const float MarkHeightSearchHalfExtentMeters = 5f;
     private const float MarkHeightFallbackHalfExtentMeters = 10f;
     private const float MarkHeightFallbackVerticalMeters = 300f;
+    // Height hints are stored in 10 yalm steps, so the floor search starts one step above the hint.
+    private const float MarkHeightHintLiftMeters = 10f;
     private const int MaxMarkPointsOnStack = 64;
 
     private enum MarkLeg { Arrived, Sighted, Failed }
@@ -57,7 +66,7 @@ public abstract partial class AutoCommon
     protected async Task<MarkOutcome> HuntMark(HuntBill bill, HuntTarget target)
     {
         Diag($"Hunt: {target.Name} for {bill.Name} at {target.Killed}/{target.Needed} (target row {target.TargetRowId}, name {target.NameId}, territory {target.TerritoryId}, {ConditionTag()})");
-        var progress = ReadMarkProgress(bill, target, force: true);
+        var progress = ReadBillProgress(bill, target, force: true, out var status);
         if (progress.Done)
         {
             Diag($"Hunt: {target.Name} is already done on {bill.Name}");
@@ -66,23 +75,74 @@ public abstract partial class AutoCommon
 
         if (!progress.Tracked)
         {
-            Warn($"Hunt: {bill.Name} reads {progress.Status}, so kills on {target.Name} cannot count");
+            Warn($"Hunt: {bill.Name} reads {status}, so kills on {target.Name} cannot count");
             return MarkOutcome.NotHeld;
         }
 
-        if (!BossModIPC.Instance.IsAvailable)
+        if (!CombatAnswering())
         {
-            Warn("Hunt: the combat plugin is not answering, so marks cannot be fought");
             return MarkOutcome.CombatUnavailable;
         }
 
-        var hunt = CreateMarkHunt(bill, target, progress.Status);
+        var hunt = CreateMarkHunt(bill, target, status);
         if (hunt is null)
         {
             Warn($"Hunt: no spawn points and no FATE are known for {target.Name} in {target.ZoneName}; skipping it");
             return MarkOutcome.Unsupported;
         }
 
+        return await RunHunt(hunt);
+    }
+
+    // A Hunting Log target or custom mob is hunted like a daily mark: its spawn points in one territory, never inside a
+    // FATE, and only copies no other party has claimed.
+    protected async Task<MarkOutcome> HuntQuarry(HuntObjective objective)
+    {
+        var name = ObjectiveProgress.Name(objective);
+        var sourceName = ObjectiveProgress.SourceName(objective);
+        Diag($"Hunt: {name} for {sourceName} at {objective.Killed}/{objective.Needed} ({objective.Source} key {objective.SourceKey}, name {objective.NameId}, territory {objective.TerritoryId}, {ConditionTag()})");
+        var progress = ReadQuarryProgress(objective, force: true);
+        if (progress.Done)
+        {
+            Diag($"Hunt: {name} is already done for {sourceName}");
+            return MarkOutcome.Killed;
+        }
+
+        if (!progress.Tracked)
+        {
+            Warn($"Hunt: {sourceName} reads {ObjectiveProgress.Describe(objective)}, so kills on {name} cannot count");
+            return MarkOutcome.NotHeld;
+        }
+
+        if (!CombatAnswering())
+        {
+            return MarkOutcome.CombatUnavailable;
+        }
+
+        var hunt = CreateQuarryHunt(objective, name, sourceName);
+        if (hunt is null)
+        {
+            var where = objective.TerritoryId != 0 ? $" in {TerritoryNames.Of(objective.TerritoryId)}" : string.Empty;
+            Warn($"Hunt: no spawn points are known for {name}{where}; skipping it");
+            return MarkOutcome.Unsupported;
+        }
+
+        return await RunHunt(hunt);
+    }
+
+    private bool CombatAnswering()
+    {
+        if (BossModIPC.Instance.IsAvailable)
+        {
+            return true;
+        }
+
+        Warn("Hunt: the combat plugin is not answering, so marks cannot be fought");
+        return false;
+    }
+
+    private async Task<MarkOutcome> RunHunt(MarkHuntContext hunt)
+    {
         EnsureHuntCombatPreset();
         var startedAt = Environment.TickCount64;
         var outcome = MarkOutcome.Cancelled;
@@ -96,7 +156,7 @@ public abstract partial class AutoCommon
             BossModIPC.Instance.ClearActive();
             MarkPhase = HuntPhase.Idle;
             var final = ReadMarkProgress(hunt, force: true);
-            Diag($"Hunt: {target.Name} ended {outcome} at {final.Killed}/{final.Needed} after {(Environment.TickCount64 - startedAt) / TimeUnits.MillisecondsPerSecond}s");
+            Diag($"Hunt: {hunt.Name} ended {outcome} at {final.Killed}/{final.Needed} after {(Environment.TickCount64 - startedAt) / TimeUnits.MillisecondsPerSecond}s");
         }
     }
 
@@ -120,11 +180,11 @@ public abstract partial class AutoCommon
             hunt.Knockouts++;
             if (hunt.Knockouts >= MaxMarkKnockouts)
             {
-                Warn($"Hunt: knocked out {hunt.Knockouts} times hunting {hunt.Target.Name}; giving it up");
+                Warn($"Hunt: knocked out {hunt.Knockouts} times hunting {hunt.Name}; giving it up");
                 return MarkOutcome.Died;
             }
 
-            Diag($"Hunt: knocked out {hunt.Knockouts}/{MaxMarkKnockouts} hunting {hunt.Target.Name}; recovering and heading back");
+            Diag($"Hunt: knocked out {hunt.Knockouts}/{MaxMarkKnockouts} hunting {hunt.Name}; recovering and heading back");
             if (!await RecoverFromMarkKnockout())
             {
                 return CancelToken.IsCancellationRequested ? MarkOutcome.Cancelled : MarkOutcome.Died;
@@ -141,7 +201,24 @@ public abstract partial class AutoCommon
             return null;
         }
 
-        return new MarkHuntContext(bill, target, startStatus, hasSpawns ? spawnTerritoryId : target.TerritoryId, fate, points.ToArray());
+        return MarkHuntContext.ForBill(bill, target, startStatus, hasSpawns ? spawnTerritoryId : target.TerritoryId, fate, points.ToArray());
+    }
+
+    private static MarkHuntContext? CreateQuarryHunt(in HuntObjective objective, string name, string sourceName)
+    {
+        var territoryId = ObjectivePlanner.TerritoryFor(objective);
+        if (territoryId == 0 || !MobSpawns.TryGet(objective.NameId, territoryId, out var points) || points.Length == 0)
+        {
+            return null;
+        }
+
+        var positions = new Vector3[points.Length];
+        for (var pointIndex = 0; pointIndex < points.Length; pointIndex++)
+        {
+            positions[pointIndex] = points[pointIndex].Position;
+        }
+
+        return MarkHuntContext.ForQuarry(objective, name, sourceName, territoryId, positions, points[0].Kind == SpawnKind.Area);
     }
 
     private async Task<MarkOutcome> SearchForMark(MarkHuntContext hunt)
@@ -154,12 +231,12 @@ public abstract partial class AutoCommon
         var points = ResolveMarkPoints(hunt);
         if (points.Length == 0)
         {
-            Warn($"Hunt: none of {hunt.Target.Name}'s spawn points has a floor under it in {hunt.ZoneName}");
+            Warn($"Hunt: none of {hunt.Name}'s spawn points has a floor under it in {hunt.ZoneName}");
             return MarkOutcome.Unreachable;
         }
 
-        hunt.StartClock(hunt.Elite ? EliteMarkSearchBudgetMs : DailyMarkSearchBudgetMs, MarkOutcome.NotFound);
-        var laps = hunt.Elite ? EliteMarkSearchLaps : DailyMarkSearchLaps;
+        hunt.StartClock(hunt.SearchBudgetMs, MarkOutcome.NotFound);
+        var laps = hunt.SearchLaps;
         var order = new int[points.Length];
         for (var lap = 1; lap <= laps; lap++)
         {
@@ -176,12 +253,12 @@ public abstract partial class AutoCommon
 
             if (hunt.PointsReached == reachedBefore)
             {
-                Warn($"Hunt: could not reach any of {hunt.Target.Name}'s {points.Length} spawn point(s) in {hunt.ZoneName}");
+                Warn($"Hunt: could not reach any of {hunt.Name}'s {points.Length} spawn point(s) in {hunt.ZoneName}");
                 return MarkOutcome.Unreachable;
             }
 
             var progress = ReadMarkProgress(hunt, force: true);
-            Diag($"Hunt: lap {lap}/{laps} over {hunt.Target.Name}'s {points.Length} spawn point(s) done at {progress.Killed}/{progress.Needed}");
+            Diag($"Hunt: lap {lap}/{laps} over {hunt.Name}'s {points.Length} {(hunt.AreaPoints ? "sub-area" : "spawn")} point(s) done at {progress.Killed}/{progress.Needed}");
         }
 
         return MarkOutcome.NotFound;
@@ -218,18 +295,41 @@ public abstract partial class AutoCommon
             }
 
             hunt.PointsReached++;
-            await DelayMs(MarkPointSettleMs);
+            await DwellAtMarkPoint(hunt);
             return await FightVisibleMarks(hunt);
         }
 
         return null;
     }
 
+    // A quarry's dwell ends as soon as one comes into view; a mark keeps its short fixed settle.
+    private async Task DwellAtMarkPoint(MarkHuntContext hunt)
+    {
+        if (!hunt.IsQuarry)
+        {
+            await DelayMs(MarkPointSettleMs);
+            return;
+        }
+
+        Status = hunt.SearchLabel;
+        var deadline = Environment.TickCount64 + hunt.PointSettleMs;
+        while (Environment.TickCount64 < deadline && !CancelToken.IsCancellationRequested)
+        {
+            if (SightMark(hunt, out _))
+            {
+                return;
+            }
+
+            await DelayMs(MarkScanIntervalMs);
+        }
+    }
+
     // Only the direct leg can stop at a sighting. Full travel cannot, so it takes over only once the leg stalls, for its
     // recovery ladder that always makes progress.
     private async Task<MarkLeg> SweepToMarkPoint(MarkHuntContext hunt, Vector3 point, string scope)
     {
-        if (WithinReach(point, MarkSweepArriveMeters))
+        var arriveWithin = hunt.ArriveMeters;
+        if (WithinReach(point, arriveWithin))
         {
             return MarkLeg.Arrived;
         }
@@ -242,7 +342,7 @@ public abstract partial class AutoCommon
         bool StopCondition()
         {
             Status = hunt.SearchLabel;
-            if (WithinReach(point, MarkSweepArriveMeters))
+            if (WithinReach(point, arriveWithin))
             {
                 return true;
             }
@@ -259,15 +359,15 @@ public abstract partial class AutoCommon
         }
 
         Diag($"{scope}: {(ride ? "riding" : "walking")} {DistanceTo(point):F0}m to {FormatPosition(point)}");
-        var operation = new MoveOp(move => move.MoveInZone(point, MovementFor(ride, MarkSweepArriveMeters), StopCondition));
+        var operation = new MoveOp(move => move.MoveInZone(point, MovementFor(ride, arriveWithin), StopCondition));
         await RunCancellable(operation, TravelBudgetMs(point), scope, StuckDetector.MoveStallAbort(scope));
         if (sighted)
         {
-            Diag($"{scope}: {hunt.Target.Name} in view; stopping to fight it");
+            Diag($"{scope}: {hunt.Name} in view; stopping to fight it");
             return MarkLeg.Sighted;
         }
 
-        if (WithinReach(point, MarkSweepArriveMeters))
+        if (WithinReach(point, arriveWithin))
         {
             return MarkLeg.Arrived;
         }
@@ -283,7 +383,7 @@ public abstract partial class AutoCommon
         }
 
         Diag($"{scope}: the direct leg ended {DistanceTo(point):F0}m short; using full travel");
-        return await TravelTo(hunt.TerritoryId, point, MarkSweepArriveMeters) ? MarkLeg.Arrived : MarkLeg.Failed;
+        return await TravelTo(hunt.TerritoryId, point, arriveWithin) ? MarkLeg.Arrived : MarkLeg.Failed;
     }
 
     private async Task<bool> EnterMarkTerritory(MarkHuntContext hunt)
@@ -297,7 +397,7 @@ public abstract partial class AutoCommon
         {
             MarkPhase = HuntPhase.Travelling;
             var entry = hunt.SpawnPoints.Length > 0 ? EstimateMarkHeight(hunt.TerritoryId, hunt.SpawnPoints[0]) : Vector3.Zero;
-            Diag($"Hunt: teleporting to {hunt.ZoneName} ({hunt.TerritoryId}) for {hunt.Target.Name}");
+            Diag($"Hunt: teleporting to {hunt.ZoneName} ({hunt.TerritoryId}) for {hunt.Name}");
             var reached = false;
             await RunWithStatusPinned(
                 $"Teleporting to {hunt.ZoneName}",
@@ -330,13 +430,13 @@ public abstract partial class AutoCommon
         for (var pointIndex = 0; pointIndex < raw.Length; pointIndex++)
         {
             var point = raw[pointIndex];
-            if (!float.IsNaN(point.Y))
+            if (!float.IsNaN(point.Y) && !hunt.SnapsHintedHeights)
             {
                 resolved.Add(point);
                 continue;
             }
 
-            if (SnapUnknownHeight(point) is { } floor)
+            if (SnapMarkHeight(point) is { } floor)
             {
                 resolved.Add(floor);
                 snapped++;
@@ -345,7 +445,7 @@ public abstract partial class AutoCommon
 
         if (snapped > 0 || resolved.Count < raw.Length)
         {
-            Diag($"Hunt: {snapped} of {hunt.Target.Name}'s spawn point(s) snapped to the floor, {raw.Length - resolved.Count} dropped with no floor under them");
+            Diag($"Hunt: {snapped} of {hunt.Name}'s spawn point(s) snapped to the floor, {raw.Length - resolved.Count} dropped with no floor under them");
         }
 
         hunt.ResolvedPoints = [.. resolved];
@@ -362,6 +462,21 @@ public abstract partial class AutoCommon
 
         var flat = point with { Y = 0f };
         return ZoneAetherytes.TryFindNearest(territoryId, flat, out var aetheryte) ? point with { Y = aetheryte.Position.Y } : flat;
+    }
+
+    // A height hint picks the floor nearest it, so a spawn under a bridge or below a ledge is not lifted to the top layer.
+    private static Vector3? SnapMarkHeight(Vector3 point)
+    {
+        if (float.IsNaN(point.Y))
+        {
+            return SnapUnknownHeight(point);
+        }
+
+        var navmesh = NavmeshIPC.Instance;
+        var lifted = point with { Y = point.Y + MarkHeightHintLiftMeters };
+        return navmesh.PointOnFloor(lifted, allowUnlandable: false, MarkHeightSearchHalfExtentMeters)
+            ?? navmesh.PointOnFloor(lifted, allowUnlandable: true, MarkHeightSearchHalfExtentMeters)
+            ?? SnapUnknownHeight(point);
     }
 
     private static Vector3? SnapUnknownHeight(Vector3 point)
@@ -435,30 +550,49 @@ public abstract partial class AutoCommon
 
         if (hunt.UncountedKills >= MaxUncountedMarkKills)
         {
-            Warn($"Hunt: {hunt.UncountedKills} kills in a row on {hunt.Target.Name} did not count on {hunt.Bill.Name}; giving it up");
+            Warn($"Hunt: {hunt.UncountedKills} kills in a row on {hunt.Name} did not count on {hunt.SourceName}; giving it up");
             return MarkOutcome.KillsNotCounted;
         }
 
         return Environment.TickCount64 >= hunt.SearchDeadline ? hunt.ExpiredOutcome : null;
     }
 
-    private static MarkProgress ReadMarkProgress(HuntBill bill, HuntTarget target, bool force)
+    private static MarkProgress ReadBillProgress(HuntBill bill, HuntTarget target, bool force, out BillStatus status)
     {
         MarkBillReader.Refresh(force);
-        var status = MarkBillReader.Status(bill.MarkIndex);
+        status = MarkBillReader.Status(bill.MarkIndex);
+        var complete = status == BillStatus.Done;
+        var held = status is BillStatus.Held or BillStatus.Stale;
         return MarkBillReader.TryFindTarget(bill.MarkIndex, target.TargetRowId, out var listed)
-            ? new MarkProgress(status, true, listed.Killed, listed.Needed)
-            : new MarkProgress(status, false, 0, target.Needed);
+            ? new MarkProgress(complete, held, true, listed.Killed, listed.Needed)
+            : new MarkProgress(complete, held, false, 0, target.Needed);
+    }
+
+    // A quarry stays listed while its source tracks it, and a finished log reads every count full, so Done needs no
+    // special case.
+    private static MarkProgress ReadQuarryProgress(in HuntObjective objective, bool force)
+    {
+        ObjectiveProgress.Refresh(objective.Source, force);
+        return new MarkProgress(false, ObjectiveProgress.IsTracked(objective), true, ObjectiveProgress.Killed(objective), ObjectiveProgress.Needed(objective));
     }
 
     // A held bill leaves the held set when its last mark falls. One held from an earlier reset then reads as posted again,
     // with no marks listed, so that flip is the kill that finished it.
     private static MarkProgress ReadMarkProgress(MarkHuntContext hunt, bool force)
     {
-        var progress = ReadMarkProgress(hunt.Bill, hunt.Target, force);
-        var finished = hunt.StartStatus is BillStatus.Held or BillStatus.Stale && progress.Status == BillStatus.Available;
-        return finished ? new MarkProgress(BillStatus.Done, false, hunt.Target.Needed, hunt.Target.Needed) : progress;
+        if (hunt.IsQuarry)
+        {
+            return ReadQuarryProgress(hunt.Objective, force);
+        }
+
+        var progress = ReadBillProgress(hunt.Bill, hunt.Target, force, out var status);
+        var finished = hunt.StartStatus is BillStatus.Held or BillStatus.Stale && status == BillStatus.Available;
+        return finished ? new MarkProgress(true, false, false, hunt.Needed, hunt.Needed) : progress;
     }
+
+    // For log lines only.
+    private static string DescribeProgress(MarkHuntContext hunt)
+        => hunt.IsQuarry ? ObjectiveProgress.Describe(hunt.Objective) : MarkBillReader.Status(hunt.Bill.MarkIndex).ToString();
 
     private bool SightMark(MarkHuntContext hunt, out MarkSighting sighting)
     {
@@ -468,11 +602,11 @@ public abstract partial class AutoCommon
             return false;
         }
 
-        var found = MarkFinder.TryFindNearest(hunt.Target.NameId, hunt.FateId, hunt.HonorsClaims, player.Position, hunt.Ignored, out sighting, out var claimed);
+        var found = MarkFinder.TryFindNearest(hunt.NameId, hunt.FateId, hunt.HonorsClaims, player.Position, hunt.Ignored, out sighting, out var claimed);
         if (claimed > 0 && !hunt.ClaimSkipLogged)
         {
             hunt.ClaimSkipLogged = true;
-            Diag($"Hunt: passing over {claimed} {hunt.Target.Name} another player's party has claimed; kills on them would not count");
+            Diag($"Hunt: passing over {claimed} {hunt.Name} another player's party has claimed; kills on them would not count");
         }
 
         return found;
@@ -480,12 +614,12 @@ public abstract partial class AutoCommon
 
     private protected static bool IsMarkKnockedOut() => Svc.Condition[ConditionFlag.Unconscious];
 
-    // Done also covers a bill that completed with this kill, since the game may clear its counts when it does.
-    private readonly record struct MarkProgress(BillStatus Status, bool Listed, int Killed, int Needed)
+    // Complete also covers a source that closed with this kill, since the game may clear its counts when it does.
+    private readonly record struct MarkProgress(bool Complete, bool Held, bool Listed, int Killed, int Needed)
     {
-        public bool Tracked => Status == BillStatus.Done || (Listed && Status is BillStatus.Held or BillStatus.Stale);
+        public bool Tracked => Complete || (Listed && Held);
 
-        public bool Done => Status == BillStatus.Done || (Listed && Killed >= Needed);
+        public bool Done => Complete || (Listed && Killed >= Needed);
     }
 
     private sealed class MarkHuntContext
@@ -497,25 +631,56 @@ public abstract partial class AutoCommon
         private int ignoredCount;
         private int ignoredNext;
 
-        public MarkHuntContext(HuntBill bill, HuntTarget target, BillStatus startStatus, uint territoryId, MarkFate fate, Vector3[] spawnPoints)
+        private MarkHuntContext(string name, uint nameId, string sourceName, int needed, uint territoryId, MarkFate fate, Vector3[] spawnPoints, bool elite, bool areaPoints)
         {
-            Bill = bill;
-            Target = target;
-            StartStatus = startStatus;
+            Name = name;
+            NameId = nameId;
+            SourceName = sourceName;
+            Needed = needed;
             TerritoryId = territoryId;
             Fate = fate;
             SpawnPoints = spawnPoints;
+            Elite = elite;
+            AreaPoints = areaPoints;
             ZoneName = TerritoryNames.Of(territoryId);
-            SearchLabel = $"Searching for {target.Name} in {ZoneName}";
-            ApproachLabel = $"Closing in on {target.Name}";
-            FightLabel = $"Fighting {target.Name}";
+            SearchLabel = $"Searching for {name} in {ZoneName}";
+            ApproachLabel = $"Closing in on {name}";
+            FightLabel = $"Fighting {name}";
         }
 
-        public HuntBill Bill { get; }
+        public static MarkHuntContext ForBill(HuntBill bill, HuntTarget target, BillStatus startStatus, uint territoryId, MarkFate fate, Vector3[] spawnPoints)
+            => new(target.Name, target.NameId, bill.Name, target.Needed, territoryId, fate, spawnPoints, bill.Cadence == BillCadence.Weekly, areaPoints: false)
+            {
+                Bill = bill,
+                Target = target,
+                StartStatus = startStatus,
+            };
 
-        public HuntTarget Target { get; }
+        public static MarkHuntContext ForQuarry(in HuntObjective objective, string name, string sourceName, uint territoryId, Vector3[] spawnPoints, bool areaPoints)
+            => new(name, objective.NameId, sourceName, objective.Needed, territoryId, default, spawnPoints, elite: false, areaPoints)
+            {
+                Objective = objective,
+                IsQuarry = true,
+            };
 
-        public BillStatus StartStatus { get; }
+        public string Name { get; }
+
+        public uint NameId { get; }
+
+        // The bill, log or list the kills count toward.
+        public string SourceName { get; }
+
+        public int Needed { get; }
+
+        public HuntBill Bill { get; private init; }
+
+        public HuntTarget Target { get; private init; }
+
+        public BillStatus StartStatus { get; private init; }
+
+        public HuntObjective Objective { get; private init; }
+
+        public bool IsQuarry { get; private init; }
 
         public uint TerritoryId { get; }
 
@@ -527,11 +692,28 @@ public abstract partial class AutoCommon
 
         public Vector3[]? ResolvedPoints { get; set; }
 
-        public bool Elite => Bill.Cadence == BillCadence.Weekly;
+        public bool Elite { get; }
+
+        // The points mark sub-areas rather than reported spawns.
+        public bool AreaPoints { get; }
 
         // FATE mobs and hunt Notorious Monsters, which every elite mark is, credit everyone who fights them; only an
         // ordinary mob belongs to the party that pulled it.
         public bool HonorsClaims => FateId == 0 && !Elite;
+
+        // The game keeps no counter for a custom mob, so the kill ledger has to see it fall.
+        public bool WatchesKills => IsQuarry && Objective.Source == ObjectiveSource.Custom;
+
+        // Bill spawns carry measured heights; the position dataset's are coarse hints.
+        public bool SnapsHintedHeights => IsQuarry;
+
+        public float ArriveMeters => AreaPoints ? AreaSweepArriveMeters : MarkSweepArriveMeters;
+
+        public int PointSettleMs => AreaPoints ? AreaPointSettleMs : MarkPointSettleMs;
+
+        public int SearchBudgetMs => Elite ? EliteMarkSearchBudgetMs : DailyMarkSearchBudgetMs;
+
+        public int SearchLaps => Elite ? EliteMarkSearchLaps : AreaPoints ? AreaSearchLaps : DailyMarkSearchLaps;
 
         public bool ClaimSkipLogged { get; set; }
 

@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Custom;
 using AutoHuntGrinder.Core.External;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
@@ -13,6 +14,7 @@ internal sealed partial class AutoHuntController
 
     private AutoHuntSession? session;
     private HuntBill[] activeBills = [];
+    private byte[] activeLogSlots = [];
     private AutoCommon? currentTask;
     private long nextSessionSampleAtMs;
 
@@ -31,7 +33,15 @@ internal sealed partial class AutoHuntController
 
     public AutoHuntSession? SessionSnapshot => session;
 
+    // The mode of the run on screen; MarkBills while nothing runs.
+    public HuntMode Mode => session?.Mode ?? HuntMode.MarkBills;
+
     public IReadOnlyList<HuntBill> ActiveBills => activeBills;
+
+    public IReadOnlyList<byte> ActiveHuntingLogSlots => activeLogSlots;
+
+    // The Hunting Log or custom list pass being worked, in hunting order; empty in a bill run.
+    public IReadOnlyList<HuntObjective> Objectives => progress.Objectives;
 
     private static void Diag(string message)
         => ECommons.DalamudServices.Svc.Log.Info($"{AhgConstants.LogPrefix} {message}");
@@ -44,20 +54,52 @@ internal sealed partial class AutoHuntController
             return;
         }
 
-        if (!ExternalPlugins.AllRequiredInstalled())
+        if (!RequiredPluginsReady())
         {
-            var missing = ExternalPlugins.MissingRequiredNames();
-            Diag($"Start aborted: required plugins missing ({missing}).");
-            ECommons.DalamudServices.Svc.Chat.PrintError($"{AhgConstants.LogPrefix} Cannot start: install all required plugins first ({missing}).");
             return;
         }
 
         activeBills = [.. bills];
-        PauseReason = PauseReason.None;
-        ResetFaultBudget();
-        session = new AutoHuntSession(activeBills);
-        Diag($"Run starting: {activeBills.Length} bill(s), job {session.JobAbbreviation}.");
-        StartHunt(session);
+        activeLogSlots = [];
+        BeginRun(new AutoHuntSession(activeBills), $"{activeBills.Length} bill(s)");
+    }
+
+    public void StartHuntingLog(IReadOnlyList<byte> slots)
+    {
+        if (slots.Count == 0)
+        {
+            Diag("Start aborted: no Hunting Log queued.");
+            return;
+        }
+
+        if (!RequiredPluginsReady())
+        {
+            return;
+        }
+
+        activeBills = [];
+        activeLogSlots = [.. slots];
+        BeginRun(new AutoHuntSession(activeLogSlots), $"{activeLogSlots.Length} Hunting Log(s)");
+    }
+
+    public void StartCustomList()
+    {
+        var pending = new List<HuntObjective>();
+        CustomMobList.BuildObjectives(pending);
+        if (pending.Count == 0)
+        {
+            Diag("Start aborted: no enabled custom mob needs kills.");
+            return;
+        }
+
+        if (!RequiredPluginsReady())
+        {
+            return;
+        }
+
+        activeBills = [];
+        activeLogSlots = [];
+        BeginRun(new AutoHuntSession(Plugin.Instance.Configuration.CustomMobs), $"{pending.Count} custom mob(s)");
     }
 
     public void Stop()
@@ -100,12 +142,49 @@ internal sealed partial class AutoHuntController
         session.Sample();
     }
 
+    private static bool RequiredPluginsReady()
+    {
+        if (ExternalPlugins.AllRequiredInstalled())
+        {
+            return true;
+        }
+
+        var missing = ExternalPlugins.MissingRequiredNames();
+        Diag($"Start aborted: required plugins missing ({missing}).");
+        ECommons.DalamudServices.Svc.Chat.PrintError($"{AhgConstants.LogPrefix} Cannot start: install all required plugins first ({missing}).");
+        return false;
+    }
+
+    private void BeginRun(AutoHuntSession newSession, string plan)
+    {
+        PauseReason = PauseReason.None;
+        ResetFaultBudget();
+        session = newSession;
+        Diag($"Run starting: {plan}, job {newSession.JobAbbreviation}.");
+        StartHunt(newSession);
+    }
+
     private void StartHunt(AutoHuntSession owningSession)
     {
         progress.Reset();
         progress.SetPhase(HuntPhase.Reading);
-        RunTask(new AutoHunt(activeBills, owningSession, progress), () => OnHuntEnded(owningSession));
+        RunTask(CreateRunTask(owningSession), () => OnHuntEnded(owningSession));
     }
+
+    private AutoCommon CreateRunTask(AutoHuntSession owningSession) => owningSession.Mode switch
+    {
+        HuntMode.HuntingLog => new AutoHuntingLog(activeLogSlots, owningSession, progress),
+        HuntMode.CustomList => new AutoCustomHunt(owningSession, progress),
+        _                   => new AutoHunt(activeBills, owningSession, progress),
+    };
+
+    // Resume and a fault restart rebuild the task from what the run started with; a custom run rereads the list itself.
+    private bool CanRestart(AutoHuntSession run) => run.Mode switch
+    {
+        HuntMode.HuntingLog => activeLogSlots.Length > 0,
+        HuntMode.CustomList => true,
+        _                   => activeBills.Length > 0,
+    };
 
     private void RunTask(AutoCommon task, Action onCompleted)
     {
@@ -127,6 +206,7 @@ internal sealed partial class AutoHuntController
     {
         session = null;
         activeBills = [];
+        activeLogSlots = [];
         progress.Reset();
     }
 
