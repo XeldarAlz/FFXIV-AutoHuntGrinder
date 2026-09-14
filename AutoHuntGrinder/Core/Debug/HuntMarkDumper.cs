@@ -33,6 +33,8 @@ internal static class HuntMarkDumper
 
             Log(line.ToString());
         }
+
+        DumpExpansionWide(marks);
     }
 
     private static void AppendRankCount(StringBuilder line, ReadOnlySpan<HuntMark> marks, ExpansionKind expansion, HuntMarkRank rank)
@@ -48,7 +50,7 @@ internal static class HuntMarkDumper
             }
 
             count++;
-            if (MobSpawns.TryGetSearchable(mark.NameId, mark.TerritoryId, out _))
+            if (MobSpawns.IsSearchable(mark.NameId, HuntMarkRegistry.SpawnTerritoryAt(index)))
             {
                 searchable++;
             }
@@ -57,6 +59,25 @@ internal static class HuntMarkDumper
         line.Append(' ').Append(rank).Append(' ').Append(count).Append(" (").Append(searchable).Append(" with non-FATE points)");
     }
 
+    private static void DumpExpansionWide(ReadOnlySpan<HuntMark> marks)
+    {
+        for (var index = 0; index < marks.Length; index++)
+        {
+            if (!HuntMarkRegistry.IsExpansionWideAt(index))
+            {
+                continue;
+            }
+
+            var mark = marks[index];
+            var firstTerritory = MobSpawns.FirstSearchableTerritory(mark.NameId);
+            var searchable = firstTerritory == 0
+                ? "none with non-FATE points"
+                : $"the first with non-FATE points is {TerritoryNames.Of(firstTerritory)} ({firstTerritory})";
+            Log($"expansion-wide: {HuntMarkRegistry.NameAt(index)} (BNpcName {mark.NameId}, rank {mark.Rank}, {mark.Expansion.ShortName()}, first listed in {mark.TerritoryId}): the spawn table knows {MobSpawns.Territories(mark.NameId).Length} zone(s), {searchable}");
+        }
+    }
+
+    // Expansion-wide marks keep the first zone that lists them, so they are left out of the zone count.
     private static int ZoneCount(ExpansionKind expansion)
     {
         var marks = HuntMarkRegistry.Marks;
@@ -65,8 +86,9 @@ internal static class HuntMarkDumper
         uint previousTerritory = 0;
         for (var position = 0; position < order.Length; position++)
         {
-            var mark = marks[order[position]];
-            if (mark.Expansion != expansion || mark.TerritoryId == previousTerritory)
+            var markIndex = order[position];
+            var mark = marks[markIndex];
+            if (mark.Expansion != expansion || HuntMarkRegistry.IsExpansionWideAt(markIndex) || mark.TerritoryId == previousTerritory)
             {
                 continue;
             }

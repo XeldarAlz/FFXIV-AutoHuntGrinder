@@ -26,6 +26,8 @@ internal static class HuntMarkBrowser
     private const float ZoneHeaderSpace = 4f;
     private const int AllExpansions = 0;
     private const int NotFiltered = -1;
+    // A territory id is a ushort, so the expansion sits above it in a zone group's key.
+    private const int GroupExpansionShift = 16;
     private const string SearchId = "##ahg_marks_search";
     private const string ExpansionId = "##ahg_marks_expansion";
 
@@ -227,7 +229,7 @@ internal static class HuntMarkBrowser
         var marks = HuntMarkRegistry.Marks;
         var groupByExpansion = expansionIndex == AllExpansions;
         var previousExpansion = NotFiltered;
-        var previousTerritory = NotFiltered;
+        var previousGroup = NotFiltered;
         var column = 0;
 
         ImGui.PushID("##ahg_marks_results");
@@ -243,10 +245,11 @@ internal static class HuntMarkBrowser
                     previousExpansion = (int)mark.Expansion;
                 }
 
-                if (mark.TerritoryId != previousTerritory)
+                var group = GroupKey(markIndex, mark);
+                if (group != previousGroup)
                 {
-                    DrawZoneHeader(markIndex, previousTerritory != NotFiltered);
-                    previousTerritory = mark.TerritoryId;
+                    DrawZoneHeader(markIndex, previousGroup != NotFiltered);
+                    previousGroup = group;
                     column = 0;
                 }
 
@@ -290,7 +293,7 @@ internal static class HuntMarkBrowser
         var iconSize = TextDraw.IconSize(FontAwesomeIcon.MapMarkerAlt);
         var iconX = origin.X + 2f * scale;
         TextDraw.Icon(FontAwesomeIcon.MapMarkerAlt, new Vector2(iconX, origin.Y + (lineHeight - iconSize.Y) * 0.5f), Styling.TextMuted);
-        TextDraw.At(HuntMarkRegistry.ZoneNameAt(markIndex), new Vector2(iconX + iconSize.X + 8f * scale, origin.Y), Styling.TextSecondary);
+        TextDraw.At(MarkBadges.ZoneLabel(markIndex), new Vector2(iconX + iconSize.X + 8f * scale, origin.Y), Styling.TextSecondary);
         ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, lineHeight));
     }
 
@@ -346,16 +349,20 @@ internal static class HuntMarkBrowser
 
         using (Fonts.PushCaption())
         {
-            TextDraw.At(TextDraw.Truncate(HuntMarkRegistry.ZoneNameAt(markIndex), zoneRight - textX), new Vector2(textX, captionY), Styling.TextDim);
+            TextDraw.At(TextDraw.Truncate(MarkBadges.ZoneLabel(markIndex), zoneRight - textX), new Vector2(textX, captionY), Styling.TextDim);
         }
 
         ImGui.SetCursorScreenPos(origin);
         ImGui.Dummy(size);
-        if (!addHovered && MarkBadges.HasTooltip(mark.Rank, state) && Hit.HoveringRect(origin, end))
+        if (!addHovered && MarkBadges.HasTooltip(markIndex, mark.Rank, state) && Hit.HoveringRect(origin, end))
         {
-            MarkBadges.DrawTooltip(name, mark.Rank, state);
+            MarkBadges.DrawTooltip(markIndex, name, mark.Rank, state);
         }
     }
+
+    // The expansion-wide marks form one group after the zones of their expansion, whatever zone first listed them.
+    private static int GroupKey(int markIndex, in HuntMark mark)
+        => (int)mark.Expansion << GroupExpansionShift | (HuntMarkRegistry.IsExpansionWideAt(markIndex) ? 0 : mark.TerritoryId);
 
     // "All expansions" follows the plugin language, so the options are rebuilt only on a language switch.
     private static string[] ExpansionOptions()

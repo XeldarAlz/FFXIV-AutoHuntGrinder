@@ -60,6 +60,10 @@ internal static class MobSpawns
         return entry != NotFound && IsFateOnlyAt(entry);
     }
 
+    // territoryId 0 asks about every zone the mob is known in.
+    public static bool IsSearchable(uint nameId, uint territoryId)
+        => territoryId == 0 ? FirstSearchableEntry(IndexOf(nameId)) != NotFound : TryGetSearchable(nameId, territoryId, out _);
+
     // The table lists a mob's busiest searchable zone first; 0 when no zone can be searched.
     public static uint FirstSearchableTerritory(uint nameId)
     {

@@ -11,6 +11,7 @@ internal static class HuntMarkRegistry
     public const int NotFound = -1;
 
     private const uint OpenWorldIntendedUse = 1;
+    private const uint AnyTerritory = 0;
 
     private static Tables? tables;
 
@@ -40,6 +41,34 @@ internal static class HuntMarkRegistry
     }
 
     public static bool IsHuntMark(uint nameId) => IndexOf(nameId) != NotFound;
+
+    // Only a custom objective is hunted by mark rules; the Hunting Log names ordinary mobs and keeps the ordinary ones.
+    public static HuntMarkRank? RankOf(in HuntObjective objective)
+        => objective.Source == ObjectiveSource.Custom && TryGet(objective.NameId, out var mark) ? mark.Rank : null;
+
+    // The SS marks and their minions spawn in any zone of their expansion; the zone kept for them is only the first that
+    // lists them.
+    public static bool IsExpansionWide(uint nameId) => IsExpansionWideAt(IndexOf(nameId));
+
+    public static bool IsExpansionWideAt(int index)
+    {
+        var expansionWide = Data.ExpansionWide;
+        return (uint)index < (uint)expansionWide.Length && expansionWide[index];
+    }
+
+    // An S rank, and every expansion-wide mark, is up only after an in-game trigger.
+    public static bool AppearsOnTrigger(uint nameId)
+    {
+        var index = IndexOf(nameId);
+        return index != NotFound && (Data.Marks[index].Rank == HuntMarkRank.S || Data.ExpansionWide[index]);
+    }
+
+    // The zone to read a mark's spawn points in; 0, which spawn lookups read as every zone, for an expansion-wide mark.
+    public static uint SpawnTerritoryAt(int index)
+    {
+        var marks = Data.Marks;
+        return (uint)index < (uint)marks.Length && !Data.ExpansionWide[index] ? marks[index].TerritoryId : AnyTerritory;
+    }
 
     public static string NameOf(uint nameId) => NameAt(IndexOf(nameId));
 
@@ -112,6 +141,7 @@ internal static class HuntMarkRegistry
         public required string[] NameKeys { get; init; }
         public required string[] ZoneNames { get; init; }
         public required string[] ZoneKeys { get; init; }
+        public required bool[] ExpansionWide { get; init; }
         public required int[] DisplayOrder { get; init; }
         public required int LongestKey { get; init; }
     }
@@ -120,7 +150,7 @@ internal static class HuntMarkRegistry
     {
         private readonly List<Listing> listings = [];
         private readonly Dictionary<uint, ushort> territoryByName = [];
-        private readonly HashSet<uint> reportedRepeats = [];
+        private readonly HashSet<uint> repeatedNames = [];
         private readonly Dictionary<ushort, string> zoneKeys = [];
         private int repeatListings;
 
@@ -136,6 +166,7 @@ internal static class HuntMarkRegistry
             var nameKeys = new string[count];
             var zoneNames = new string[count];
             var markZoneKeys = new string[count];
+            var expansionWide = new bool[count];
             var npcNames = Svc.Data.GetExcelSheet<BNpcName>();
             var longestKey = 0;
             for (var index = 0; index < count; index++)
@@ -146,12 +177,13 @@ internal static class HuntMarkRegistry
                 names[index] = ReadName(npcNames, mark.NameId);
                 nameKeys[index] = names[index].ToLowerInvariant();
                 zoneNames[index] = TerritoryNames.Of(mark.TerritoryId);
-                markZoneKeys[index] = ZoneKey(mark.TerritoryId, zoneNames[index]);
+                expansionWide[index] = repeatedNames.Contains(mark.NameId);
+                markZoneKeys[index] = expansionWide[index] ? string.Empty : ZoneKey(mark.TerritoryId, zoneNames[index]);
                 longestKey = Math.Max(longestKey, Math.Max(nameKeys[index].Length, markZoneKeys[index].Length));
             }
 
-            var displayOrder = BuildDisplayOrder(byName);
-            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunt mark registry: {count} marks over {zoneKeys.Count} open-world zones; {repeatListings} repeated listings skipped");
+            var displayOrder = BuildDisplayOrder(byName, expansionWide);
+            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunt mark registry: {count} marks over {zoneKeys.Count} open-world zones ({repeatedNames.Count} expansion-wide); {repeatListings} repeated listings skipped");
             return new Tables
             {
                 Marks = marks,
@@ -160,6 +192,7 @@ internal static class HuntMarkRegistry
                 NameKeys = nameKeys,
                 ZoneNames = zoneNames,
                 ZoneKeys = markZoneKeys,
+                ExpansionWide = expansionWide,
                 DisplayOrder = displayOrder,
                 LongestKey = longestKey,
             };
@@ -222,11 +255,11 @@ internal static class HuntMarkRegistry
         }
 
         // The expansion-wide SS marks and their minions sit in every zone's list of their expansion, some several times
-        // per zone, so each name is reported once and keeps the first zone it appears in.
+        // per zone, so each name is reported once, keeps the first zone it appears in, and is flagged as expansion-wide.
         private void SkipRepeat(uint nameId, ushort territoryId)
         {
             repeatListings++;
-            if (!reportedRepeats.Add(nameId))
+            if (!repeatedNames.Add(nameId))
             {
                 return;
             }
@@ -252,7 +285,7 @@ internal static class HuntMarkRegistry
             return name.Length == 0 ? $"#{nameId}" : name;
         }
 
-        private static int[] BuildDisplayOrder(Listing[] byName)
+        private static int[] BuildDisplayOrder(Listing[] byName, bool[] expansionWide)
         {
             var order = new int[byName.Length];
             for (var index = 0; index < order.Length; index++)
@@ -260,19 +293,26 @@ internal static class HuntMarkRegistry
                 order[index] = index;
             }
 
-            Array.Sort(order, (left, right) => CompareForDisplay(byName[left], byName[right]));
+            Array.Sort(order, (left, right) => CompareForDisplay(byName[left], expansionWide[left], byName[right], expansionWide[right]));
             return order;
         }
 
         private static int CompareByName(Listing left, Listing right) => left.Mark.NameId.CompareTo(right.Mark.NameId);
 
-        // Region before territory keeps a region's zones together, the way the Mark achievements group them.
-        private static int CompareForDisplay(in Listing left, in Listing right)
+        // Region before territory keeps a region's zones together, the way the Mark achievements group them; the
+        // expansion-wide marks follow every zone of their expansion.
+        private static int CompareForDisplay(in Listing left, bool leftExpansionWide, in Listing right, bool rightExpansionWide)
         {
             var byExpansion = ((int)left.Mark.Expansion).CompareTo((int)right.Mark.Expansion);
             if (byExpansion != 0)
             {
                 return byExpansion;
+            }
+
+            var byReach = leftExpansionWide.CompareTo(rightExpansionWide);
+            if (byReach != 0)
+            {
+                return byReach;
             }
 
             var byRegion = left.RegionId.CompareTo(right.RegionId);

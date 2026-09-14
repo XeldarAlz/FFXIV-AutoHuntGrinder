@@ -312,7 +312,7 @@ internal static partial class L
 
     internal static class Plugin
     {
-        public static readonly LocString CommandHelp = new("plugin.commandHelp", "Toggle the Auto Hunt Grinder window. /ahg config | stats | deps | about | pause (pause or resume the run) | target (dump the current target's BaseId and spawn points) | logdump (write the Hunting Log state to the plugin log).");
+        public static readonly LocString CommandHelp = new("plugin.commandHelp", "Toggle the Auto Hunt Grinder window. /ahg config | stats | deps | about | pause (pause or resume the run) | target (dump the current target's BaseId and spawn points) | logdump (write the Hunting Log state to the plugin log) | marks (write the hunt marks and Mark achievements to the plugin log).");
         public static readonly LocString CommandHelpAlias = new("plugin.commandHelpAlias", "Alias for /ahg.");
     }
 }

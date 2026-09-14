@@ -20,8 +20,9 @@ public abstract partial class AutoCommon
     private const int EliteMarkSearchLaps = 4;
     // An A rank hunt mark respawns over hours, so two laps over its few known points tell whether it is up.
     private const int RankAMarkSearchLaps = 2;
-    // An S rank hunt mark is up only after an in-game trigger, so one look at each known point settles it.
-    private const int RankSMarkSearchLaps = 1;
+    // An S rank, or a mark that spawns anywhere in its expansion, is up only after an in-game trigger, so one look at each
+    // known point settles it.
+    private const int TriggeredMarkSearchLaps = 1;
     // A sub-area point is only its map label, often away from where the mobs roam, so one stop there is rarely enough.
     private const int AreaSearchLaps = 4;
     // Spawn points are approximate, and a mark near one is in view long before the point itself.
@@ -139,7 +140,8 @@ public abstract partial class AutoCommon
 
         if (hunt.MarkRank is { } rank)
         {
-            Diag($"Hunt: {name} is a rank {rank} hunt mark; claimed copies are fought too, over up to {hunt.SearchLaps} lap(s) of {hunt.SpawnPoints.Length} point(s) within {hunt.SearchBudgetMs / TimeUnits.MillisecondsPerSecond}s");
+            var trigger = hunt.AppearsOnTrigger ? " that appears only after an in-game trigger" : string.Empty;
+            Diag($"Hunt: {name} is a rank {rank} hunt mark{trigger}; claimed copies are fought too, over up to {hunt.SearchLaps} lap(s) of {hunt.SpawnPoints.Length} point(s) within {hunt.SearchBudgetMs / TimeUnits.MillisecondsPerSecond}s");
         }
 
         return await RunHunt(hunt);
@@ -698,12 +700,16 @@ public abstract partial class AutoCommon
             };
 
         public static MarkHuntContext ForQuarry(in HuntObjective objective, string name, string sourceName, uint territoryId, Vector3[] spawnPoints, bool areaPoints)
-            => new(name, objective.NameId, sourceName, objective.Needed, territoryId, default, spawnPoints, elite: false, areaPoints)
+        {
+            var rank = HuntMarkRegistry.RankOf(objective);
+            return new(name, objective.NameId, sourceName, objective.Needed, territoryId, default, spawnPoints, elite: false, areaPoints)
             {
                 Objective = objective,
                 IsQuarry = true,
-                MarkRank = HuntMarkRankOf(objective),
+                MarkRank = rank,
+                AppearsOnTrigger = rank.HasValue && HuntMarkRegistry.AppearsOnTrigger(objective.NameId),
             };
+        }
 
         public string Name { get; }
 
@@ -726,6 +732,8 @@ public abstract partial class AutoCommon
         public HuntMarkRank? MarkRank { get; private init; }
 
         public bool IsHuntMark => MarkRank.HasValue;
+
+        public bool AppearsOnTrigger { get; private init; }
 
         public uint TerritoryId { get; }
 
@@ -758,10 +766,9 @@ public abstract partial class AutoCommon
         // A rank B hunt mark respawns quickly and is searched like a daily mark; A and S ranks patrol like elite marks.
         public int SearchBudgetMs => (Elite || MarkRank is HuntMarkRank.A or HuntMarkRank.S) ? EliteMarkSearchBudgetMs : DailyMarkSearchBudgetMs;
 
-        public int SearchLaps => MarkRank switch
+        public int SearchLaps => AppearsOnTrigger ? TriggeredMarkSearchLaps : MarkRank switch
         {
             HuntMarkRank.A => RankAMarkSearchLaps,
-            HuntMarkRank.S => RankSMarkSearchLaps,
             _ => Elite ? EliteMarkSearchLaps : AreaPoints ? AreaSearchLaps : DailyMarkSearchLaps,
         };
 
@@ -804,9 +811,5 @@ public abstract partial class AutoCommon
             ignoredNext = (ignoredNext + 1) % MaxIgnoredInstances;
             ignoredCount = Math.Min(ignoredCount + 1, MaxIgnoredInstances);
         }
-
-        // Only a custom objective is hunted by mark rules; the Hunting Log names ordinary mobs and keeps the ordinary ones.
-        private static HuntMarkRank? HuntMarkRankOf(in HuntObjective objective)
-            => objective.Source == ObjectiveSource.Custom && HuntMarkRegistry.TryGet(objective.NameId, out var mark) ? mark.Rank : null;
     }
 }

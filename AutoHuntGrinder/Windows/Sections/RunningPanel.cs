@@ -1,5 +1,6 @@
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
+using AutoHuntGrinder.Core.Marks;
 using AutoHuntGrinder.Core.Tasks;
 using AutoHuntGrinder.Windows.Components;
 using Dalamud.Bindings.ImGui;
@@ -14,6 +15,9 @@ namespace AutoHuntGrinder.Windows.Sections;
 internal static class RunningPanel
 {
     private const float PadX = 18f;
+    // Sized to sit on a line of body text, a little under the badge in the custom list rows.
+    private const float InlineRankSize = 18f;
+    private const float RankGap = 8f;
     private const int QueueLength = 6;
     private const int InPlayModeShift = 56;
     private const int InPlayTerritoryShift = 24;
@@ -176,10 +180,12 @@ internal static class RunningPanel
     private static float DrawMark(in CurrentMark.View mark, string status, float x, float width, float y, Vector4 accentSoft)
     {
         var scale = ImGuiHelpers.GlobalScale;
+        var lineHeight = ImGui.GetTextLineHeight();
         var killsWidth = TextDraw.Measure(mark.Kills).X;
         TextDraw.At(mark.Kills, new Vector2(x + width - killsWidth, y), accentSoft);
-        TextDraw.At(TextDraw.Truncate(mark.Name, width - killsWidth - 12f * scale), new Vector2(x, y), Styling.TextStrong);
-        y += ImGui.GetTextLineHeight() + 3f * scale;
+        var nameX = x + DrawRankBadge(mark.Rank, x, y + lineHeight * 0.5f);
+        TextDraw.At(TextDraw.Truncate(mark.Name, x + width - killsWidth - 12f * scale - nameX), new Vector2(nameX, y), Styling.TextStrong);
+        y += lineHeight + 3f * scale;
 
         using (Fonts.PushCaption())
         {
@@ -190,6 +196,17 @@ internal static class RunningPanel
         }
 
         return y + 10f * scale;
+    }
+
+    // Returns the width the badge and its gap take, 0 when the target is not a hunt mark.
+    private static float DrawRankBadge(HuntMarkRank? rank, float leftX, float midY)
+    {
+        if (rank is not { } markRank)
+        {
+            return 0f;
+        }
+
+        return MarkBadges.DrawRank(ImGui.GetWindowDrawList(), markRank, leftX, midY, InlineRankSize) + RankGap * ImGuiHelpers.GlobalScale;
     }
 
     private static void DrawKillRing(Vector2 center, float radius, Vector4 accent, bool active, BillSelection.Workload workload)
@@ -334,7 +351,7 @@ internal static class RunningPanel
         {
             var target = queue[index].Target;
             DrawQueueRow(index, target.Name, target.ZoneName, target.Killed, target.Needed,
-                BillRowFlag | RowKey(target.TargetRowId, target.Killed, target.Needed), queue[index].Stale);
+                BillRowFlag | RowKey(target.TargetRowId, target.Killed, target.Needed), queue[index].Stale, null);
         }
     }
 
@@ -367,7 +384,7 @@ internal static class RunningPanel
             var objective = objectiveQueue[index];
             var killed = Math.Min(objective.Killed, objective.Needed);
             DrawQueueRow(index, ObjectiveProgress.Name(objective), CurrentMark.ZoneName(objective.TerritoryId), killed, objective.Needed,
-                RowKey(objective.TerritoryId, killed, objective.Needed), false);
+                RowKey(objective.TerritoryId, killed, objective.Needed), false, HuntMarkRegistry.RankOf(objective));
         }
     }
 
@@ -444,7 +461,7 @@ internal static class RunningPanel
     private static long RowKey(uint zoneSource, int killed, int needed)
         => (zoneSource & RowZoneMask) << RowZoneShift | (killed & RowCountMask) << RowKilledShift | (needed & RowCountMask);
 
-    private static void DrawQueueRow(int index, string name, string zoneName, int killed, int needed, long metaKey, bool stale)
+    private static void DrawQueueRow(int index, string name, string zoneName, int killed, int needed, long metaKey, bool stale, HuntMarkRank? rank)
     {
         var emphasize = index == 0;
         var scale = ImGuiHelpers.GlobalScale;
@@ -474,6 +491,7 @@ internal static class RunningPanel
         }
 
         var nameX = origin.X + padX + iconSize.X + 10f * scale;
+        nameX += DrawRankBadge(rank, nameX, topY + ImGui.GetTextLineHeight() * 0.5f);
         var shownName = TextDraw.Truncate(name, end.X - padX - metaSize.X - 12f * scale - nameX);
         TextDraw.At(shownName, new Vector2(nameX, topY), emphasize ? Styling.TextStrong : Styling.TextSecondary);
 

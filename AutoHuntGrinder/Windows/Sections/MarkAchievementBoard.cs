@@ -471,12 +471,12 @@ internal static class MarkAchievementBoard
 
         using (Fonts.PushCaption())
         {
-            TextDraw.At(TextDraw.Truncate(HuntMarkRegistry.ZoneNameAt(markIndex), zoneRight - textX), new Vector2(textX, captionY), Styling.TextDim);
+            TextDraw.At(TextDraw.Truncate(MarkBadges.ZoneLabel(markIndex), zoneRight - textX), new Vector2(textX, captionY), Styling.TextDim);
         }
 
-        if (!addHovered && MarkBadges.HasTooltip(mark.Rank, state) && Hit.HoveringRect(min, end))
+        if (!addHovered && MarkBadges.HasTooltip(markIndex, mark.Rank, state) && Hit.HoveringRect(min, end))
         {
-            MarkBadges.DrawTooltip(name, mark.Rank, state);
+            MarkBadges.DrawTooltip(markIndex, name, mark.Rank, state);
         }
 
         return listed;

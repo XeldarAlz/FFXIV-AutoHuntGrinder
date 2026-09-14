@@ -167,6 +167,10 @@ public sealed class Plugin : IDalamudPlugin
         {
             HuntingLogDumper.Dump();
         }
+        else if (trimmed.Equals("marks", StringComparison.OrdinalIgnoreCase))
+        {
+            HuntMarkDumper.Dump();
+        }
         else if (IsGotoCommand(trimmed))
         {
             AutoGoto.HandleCommand(trimmed[GotoSubcommand.Length..].Trim(), Controller.Running);

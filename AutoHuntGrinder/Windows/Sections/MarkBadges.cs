@@ -44,13 +44,13 @@ internal static class MarkBadges
 
     public static float RankWidth => RankSize * ImGuiHelpers.GlobalScale;
 
-    public static float DrawRank(ImDrawListPtr drawList, HuntMarkRank rank, float leftX, float midY)
+    public static float DrawRank(ImDrawListPtr drawList, HuntMarkRank rank, float leftX, float midY, float size = RankSize)
     {
         var scale = ImGuiHelpers.GlobalScale;
-        var size = RankSize * scale;
+        var side = size * scale;
         var rounding = RankRounding * scale;
-        var min = new Vector2(leftX, midY - size * 0.5f);
-        var max = min + new Vector2(size, size);
+        var min = new Vector2(leftX, midY - side * 0.5f);
+        var max = min + new Vector2(side, side);
         var fill = RankColor(rank);
         Paint.Fill(drawList, min, max, fill, rounding);
         Paint.TopLight(drawList, min, max, rounding, 0.18f);
@@ -59,8 +59,12 @@ internal static class MarkBadges
             TextDraw.Middle(Letter(rank), min, max, Styling.ForegroundOn(fill));
         }
 
-        return size;
+        return side;
     }
+
+    // An expansion-wide mark keeps only the first zone that lists it, which says nothing about where it appears.
+    public static string ZoneLabel(int markIndex)
+        => HuntMarkRegistry.IsExpansionWideAt(markIndex) ? Loc.T(L.CustomList.AnyZone) : HuntMarkRegistry.ZoneNameAt(markIndex);
 
     // Spawn data never changes while the plugin runs, so each mark's state is looked up once.
     public static MarkSpawnState SpawnStateAt(int markIndex)
@@ -82,14 +86,19 @@ internal static class MarkBadges
         _ => 0f,
     };
 
-    public static bool HasTooltip(HuntMarkRank rank, MarkSpawnState state) => rank == HuntMarkRank.S || state != MarkSpawnState.Points;
+    public static bool HasTooltip(int markIndex, HuntMarkRank rank, MarkSpawnState state)
+        => rank == HuntMarkRank.S || state != MarkSpawnState.Points || HuntMarkRegistry.IsExpansionWideAt(markIndex);
 
-    public static void DrawTooltip(string name, HuntMarkRank rank, MarkSpawnState state)
+    public static void DrawTooltip(int markIndex, string name, HuntMarkRank rank, MarkSpawnState state)
     {
         using (Tooltip.Begin())
         {
             Tooltip.Text(name, Styling.TextStrong);
-            if (rank == HuntMarkRank.S)
+            if (HuntMarkRegistry.IsExpansionWideAt(markIndex))
+            {
+                Tooltip.Text(Loc.T(L.HuntMarks.ExpansionWideHelp), Styling.Lighten(RankColor(rank), 0.25f));
+            }
+            else if (rank == HuntMarkRank.S)
             {
                 Tooltip.Text(Loc.T(L.HuntMarks.SRankHelp), Styling.Lighten(RankColor(rank), 0.25f));
             }
@@ -154,19 +163,19 @@ internal static class MarkBadges
         var states = new MarkSpawnState[marks.Length];
         for (var index = 0; index < marks.Length; index++)
         {
-            states[index] = SpawnStateOf(marks[index]);
+            states[index] = SpawnStateOf(marks[index].NameId, HuntMarkRegistry.SpawnTerritoryAt(index));
         }
 
         return states;
     }
 
-    private static MarkSpawnState SpawnStateOf(in HuntMark mark)
+    private static MarkSpawnState SpawnStateOf(uint nameId, uint territoryId)
     {
-        if (MobSpawns.TryGetSearchable(mark.NameId, mark.TerritoryId, out _))
+        if (MobSpawns.IsSearchable(nameId, territoryId))
         {
             return MarkSpawnState.Points;
         }
 
-        return MobSpawns.IsFateOnly(mark.NameId, mark.TerritoryId) ? MarkSpawnState.FateOnly : MarkSpawnState.NoData;
+        return MobSpawns.IsFateOnly(nameId, territoryId) ? MarkSpawnState.FateOnly : MarkSpawnState.NoData;
     }
 }

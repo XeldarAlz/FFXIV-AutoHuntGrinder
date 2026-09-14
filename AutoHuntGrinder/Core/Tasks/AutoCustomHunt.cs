@@ -135,19 +135,36 @@ internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progr
         Svc.Chat.Print($"{AhgConstants.LogPrefix} No spawn points outside FATEs are known for {string.Join(", ", leftOutNames)}, so the run leaves {(leftOutNames.Count == 1 ? "it" : "them")} to you.");
     }
 
-    // An A or S rank no sweep found is not up, and it stays down for hours or days, so the run does not look again.
+    // An A rank no sweep found is not up and stays down for hours; a mark that appears only after an in-game trigger may
+    // stay away for days. Either way the run does not look again.
     private protected override bool LeavesForRun(in HuntObjective objective, string name, MarkOutcome outcome)
     {
-        if (outcome != MarkOutcome.NotFound || !HuntMarkRegistry.TryGet(objective.NameId, out var mark) || mark.Rank == HuntMarkRank.B)
+        if (outcome != MarkOutcome.NotFound || !HuntMarkRegistry.TryGet(objective.NameId, out var mark))
+        {
+            return false;
+        }
+
+        var onTrigger = HuntMarkRegistry.AppearsOnTrigger(mark.NameId);
+        if (mark.Rank != HuntMarkRank.A && !onTrigger)
         {
             return false;
         }
 
         RunSession.MarksNotUp.Add(objective.NameId);
-        Svc.Chat.Print(mark.Rank == HuntMarkRank.S
-            ? $"{AhgConstants.LogPrefix} {name} was not found. S rank marks appear only after an in-game trigger, so the run skips it for the rest of this run."
-            : $"{AhgConstants.LogPrefix} {name} was not found. It may not be up, since A rank marks respawn over hours, so the run skips it for the rest of this run.");
+        Svc.Chat.Print(NotUpLine(name, mark.Rank, onTrigger));
         return true;
+    }
+
+    private static string NotUpLine(string name, HuntMarkRank rank, bool onTrigger)
+    {
+        if (!onTrigger)
+        {
+            return $"{AhgConstants.LogPrefix} {name} was not found. It may not be up, since A rank marks respawn over hours, so the run skips it for the rest of this run.";
+        }
+
+        return rank == HuntMarkRank.S
+            ? $"{AhgConstants.LogPrefix} {name} was not found. S rank marks appear only after an in-game trigger, so the run skips it for the rest of this run."
+            : $"{AhgConstants.LogPrefix} {name} was not found. It appears only after an in-game trigger, anywhere in its expansion, so the run skips it for the rest of this run.";
     }
 
     // Mobs the run cannot hunt and hunt marks that were not up do not hold back the after-run action, as marks without

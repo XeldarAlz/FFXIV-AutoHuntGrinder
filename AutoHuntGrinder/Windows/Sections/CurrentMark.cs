@@ -1,5 +1,6 @@
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
+using AutoHuntGrinder.Core.Marks;
 using AutoHuntGrinder.Core.Tasks;
 using AutoHuntGrinder.Core.Travel;
 
@@ -15,8 +16,10 @@ internal static class CurrentMark
     private static string cachedZoneName = string.Empty;
     private static string cachedLine = string.Empty;
     private static string cachedKills = string.Empty;
+    private static HuntMarkRank? cachedRank;
 
-    public readonly record struct View(string Name, string ZoneName, string Line, string Kills);
+    // Rank is set only for a hunt mark on the custom list.
+    public readonly record struct View(string Name, string ZoneName, string Line, string Kills, HuntMarkRank? Rank);
 
     // A mark is keyed by its bill and target row, an objective by its source key and the zone it was planned in.
     private readonly record struct Identity(bool Objective, uint Owner, uint Id, int Killed, int Needed);
@@ -39,7 +42,7 @@ internal static class CurrentMark
             ComposeObjective(progress.Objective);
         }
 
-        view = new View(cachedName, cachedZoneName, cachedLine, cachedKills);
+        view = new View(cachedName, cachedZoneName, cachedLine, cachedKills, cachedRank);
         return true;
     }
 
@@ -58,7 +61,7 @@ internal static class CurrentMark
             return;
         }
 
-        Compose(target.Name, target.ZoneName, killed, needed);
+        Compose(target.Name, target.ZoneName, killed, needed, null);
     }
 
     private static void ComposeObjective(in HuntObjective objective)
@@ -71,7 +74,7 @@ internal static class CurrentMark
             return;
         }
 
-        Compose(ObjectiveProgress.Name(objective), ZoneName(objective.TerritoryId), killed, needed);
+        Compose(ObjectiveProgress.Name(objective), ZoneName(objective.TerritoryId), killed, needed, HuntMarkRegistry.RankOf(objective));
     }
 
     private static bool Unchanged(in Identity identity)
@@ -87,10 +90,11 @@ internal static class CurrentMark
         return false;
     }
 
-    private static void Compose(string name, string zoneName, int killed, int needed)
+    private static void Compose(string name, string zoneName, int killed, int needed, HuntMarkRank? rank)
     {
         cachedName = name;
         cachedZoneName = zoneName;
+        cachedRank = rank;
         cachedKills = Loc.T(L.Progress.Kills, killed, needed);
         cachedLine = Loc.T(L.Progress.MarkLine, name, zoneName, killed, needed);
     }

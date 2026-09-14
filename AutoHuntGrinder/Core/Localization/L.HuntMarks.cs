@@ -19,6 +19,7 @@ internal static partial class L
         public static readonly LocString InList = new("huntMarks.inList", "In list");
         public static readonly LocString AddHelp = new("huntMarks.addHelp", "Adds this mark to your list with one kill to hunt.");
         public static readonly LocString SRankHelp = new("huntMarks.sRankHelp", "S ranks appear only after an in-game trigger, so a run checks their known spawn points once and moves on.");
+        public static readonly LocString ExpansionWideHelp = new("huntMarks.expansionWideHelp", "Appears only after an in-game trigger, in any zone of its expansion, so a run checks its known spawn points once and moves on.");
         public static readonly LocString NoSpawnsHelp = new("huntMarks.noSpawnsHelp", "No known spawn points, so a run leaves this mark to you.");
 
         public static readonly LocString EarnedSummary = new("huntMarks.achievements.earnedSummary", "{0} of {1} earned");
