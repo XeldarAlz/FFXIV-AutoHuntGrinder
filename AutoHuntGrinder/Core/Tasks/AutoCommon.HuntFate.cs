@@ -49,7 +49,7 @@ public abstract partial class AutoCommon
                 return outcome;
             }
 
-            Diag($"Fate: {hunt.Fate.Name} ended before {hunt.Target.Name} counted; waiting for it to come back");
+            Diag($"Fate: {hunt.Fate.Name} ended before {hunt.Name} counted; waiting for it to come back");
         }
     }
 
@@ -90,7 +90,7 @@ public abstract partial class AutoCommon
 
     private async Task<MarkOutcome?> FightMarkFate(MarkHuntContext hunt)
     {
-        var label = $"Looking for {hunt.Target.Name} in {hunt.Fate.Name}";
+        var label = $"Looking for {hunt.Name} in {hunt.Fate.Name}";
         while (TryReadMarkFate(hunt.FateId, out var fate) && fate.State == FateState.Running)
         {
             if (CheckMarkState(hunt) is { } stop)

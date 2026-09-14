@@ -1,8 +1,13 @@
+using AutoHuntGrinder.Core.Hunts;
+
 namespace AutoHuntGrinder.Core.Stats;
 
 [Serializable]
 public sealed class RunRecord
 {
+    // Records written before the other modes existed carry no mode and read back as bill runs.
+    public HuntMode Mode { get; set; } = HuntMode.MarkBills;
+
     public DateTime StartedAtUtc { get; set; }
     public DateTime EndedAtUtc { get; set; }
     public double DurationSeconds { get; set; }

@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Hunts;
 using clib.Services;
 
 namespace AutoHuntGrinder.Core.Tasks;
@@ -53,7 +54,7 @@ internal sealed partial class AutoHuntController
         Diag($"Run paused ({reason}); session kept at {pausing.MarksKilled} marks, {pausing.BillsCompleted} bills.");
         ECommons.DalamudServices.Svc.Chat.Print(reason == PauseReason.InContent
             ? $"{AhgConstants.LogPrefix} Paused: you are in instanced content. The hunt resumes once you are back outside."
-            : $"{AhgConstants.LogPrefix} Paused. Your bills and session stats are kept until you resume or stop.");
+            : $"{AhgConstants.LogPrefix} Paused. Your {(pausing.Mode == HuntMode.MarkBills ? "bills" : "run")} and session stats are kept until you resume or stop.");
     }
 
     public void Resume()
@@ -64,9 +65,9 @@ internal sealed partial class AutoHuntController
         }
 
         var resuming = session;
-        if (resuming is null || activeBills.Length == 0)
+        if (resuming is null || !CanRestart(resuming))
         {
-            Diag("Resume requested with no session or no bills; stopping instead.");
+            Diag("Resume requested with no session or nothing to resume; stopping instead.");
             Stop();
             return;
         }

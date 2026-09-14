@@ -78,6 +78,31 @@ public abstract partial class AutoCommon
         return !IsMarkKnockedOut();
     }
 
+    // A knockout the revive cannot clear would fail every later mark the same way, so the run stops instead.
+    private protected async Task<bool> EnsureStanding()
+    {
+        if (!IsMarkKnockedOut())
+        {
+            return true;
+        }
+
+        Diag("Run: the character is knocked out; bringing it back before going on");
+        var standing = await RecoverFromMarkKnockout();
+        if (CancelToken.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        if (standing)
+        {
+            return true;
+        }
+
+        Warn("Run: the character is still knocked out after the revive; stopping the run");
+        Svc.Chat.PrintError($"{AhgConstants.LogPrefix} The character could not get back on its feet, so the hunt stops.");
+        return false;
+    }
+
     private async Task<bool> WaitForMarkRaise()
     {
         Status = "Knocked out, waiting for a raise";

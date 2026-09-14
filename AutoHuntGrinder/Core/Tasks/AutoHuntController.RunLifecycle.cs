@@ -39,6 +39,8 @@ internal sealed partial class AutoHuntController
 
         progress.ClearMark();
         progress.ClearRoute();
+        progress.ClearObjective();
+        progress.ClearObjectives();
         if (!TryRunAfterAction(owningSession))
         {
             ClearRun();
@@ -109,6 +111,7 @@ internal sealed partial class AutoHuntController
 
             var record = new RunRecord
             {
+                Mode = ending.Mode,
                 StartedAtUtc = ending.StartedAt,
                 EndedAtUtc = DateTime.UtcNow,
                 DurationSeconds = ending.Elapsed.TotalSeconds,
@@ -121,7 +124,7 @@ internal sealed partial class AutoHuntController
                 BillNames = [.. ending.BillNames],
             };
             Plugin.Instance.History.Append(record);
-            Diag($"Run recorded to history: {record.BillsCompleted} bills, {record.MarksKilled} marks, {record.AlliedSeals} allied seals, {record.CenturioSeals} centurio seals, {record.Nuts} nuts over {record.Duration} as {record.JobAbbreviation}.");
+            Diag($"Run recorded to history ({record.Mode}): {record.BillsCompleted} bills, {record.MarksKilled} marks, {record.AlliedSeals} allied seals, {record.CenturioSeals} centurio seals, {record.Nuts} nuts over {record.Duration} as {record.JobAbbreviation}.");
         }
         catch (Exception exception)
         {
@@ -147,9 +150,9 @@ internal sealed partial class AutoHuntController
             return false;
         }
 
-        if (activeBills.Length == 0)
+        if (!CanRestart(owningSession))
         {
-            Diag("Hunt task faulted with no bills to resume; the run ends.");
+            Diag($"Hunt task faulted with nothing to resume ({owningSession.Mode}); the run ends.");
             return false;
         }
 
