@@ -6,15 +6,12 @@ using System.Numerics;
 
 namespace AutoHuntGrinder.Core.Hunts;
 
-// Every territory is visited once: the current one first, then the rest region by region, since a teleport inside a
-// region costs less. Inside a territory the objectives run nearest-next from where the character stands, or from the
-// first objective's spawns when it lands there fresh.
 internal static class ObjectivePlanner
 {
     private static readonly Vector3 unknownAnchor = new(float.NaN);
 
-    // A pinned territory stands as it is; otherwise the current territory when the mob spawns there, else the
-    // territory with the most known points. 0 when nothing is known.
+    // A pinned territory stands as it is; otherwise the current territory when a search can find the mob there, else the
+    // busiest territory that can. 0 when none can.
     public static uint TerritoryFor(in HuntObjective objective)
     {
         if (objective.TerritoryId != 0)
@@ -23,22 +20,17 @@ internal static class ObjectivePlanner
         }
 
         uint currentTerritory = Svc.ClientState.TerritoryType;
-        if (MobSpawns.TryGet(objective.NameId, currentTerritory, out var points) && points.Length > 0)
-        {
-            return currentTerritory;
-        }
-
-        var territories = MobSpawns.Territories(objective.NameId);
-        return territories.Length > 0 ? territories[0] : 0u;
+        return MobSpawns.TryGetSearchable(objective.NameId, currentTerritory, out _)
+            ? currentTerritory
+            : MobSpawns.FirstSearchableTerritory(objective.NameId);
     }
 
     public static bool CanHunt(in HuntObjective objective)
     {
         var territoryId = TerritoryFor(objective);
-        return territoryId != 0 && MobSpawns.TryGet(objective.NameId, territoryId, out var points) && points.Length > 0;
+        return territoryId != 0 && MobSpawns.TryGetSearchable(objective.NameId, territoryId, out _);
     }
 
-    // Returns the objectives in hunting order, each with its territory filled in.
     public static HuntObjective[] Plan(IReadOnlyList<HuntObjective> objectives)
     {
         if (objectives.Count == 0)
@@ -66,6 +58,7 @@ internal static class ObjectivePlanner
         return [.. plan];
     }
 
+    // The current territory comes first; a teleport inside a region costs less, so the rest follow region by region.
     private static List<uint> OrderTerritories(List<HuntObjective> objectives, uint currentTerritory)
     {
         var remaining = new List<uint>();
@@ -105,6 +98,7 @@ internal static class ObjectivePlanner
         return ordered;
     }
 
+    // Starts from where the character stands, or from the first objective's spawns when it lands in the territory fresh.
     private static void AppendTerritory(List<HuntObjective> plan, List<HuntObjective> objectives, uint territoryId, Vector3? origin)
     {
         var pending = new List<HuntObjective>();
@@ -175,7 +169,7 @@ internal static class ObjectivePlanner
     }
 
     private static Vector3 AnchorOf(in HuntObjective objective)
-        => MobSpawns.TryGet(objective.NameId, objective.TerritoryId, out var points) && points.Length > 0 ? points[0].Position : unknownAnchor;
+        => MobSpawns.TryGetSearchable(objective.NameId, objective.TerritoryId, out var points) ? points[0].Position : unknownAnchor;
 
     // Only X and Z order the plan; an unknown height still leaves a usable anchor.
     private static bool IsKnown(Vector3 anchor) => !float.IsNaN(anchor.X) && !float.IsNaN(anchor.Z);

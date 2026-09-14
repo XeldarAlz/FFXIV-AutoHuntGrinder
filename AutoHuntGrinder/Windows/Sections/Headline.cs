@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Core.Stats;
 using AutoHuntGrinder.Core.Tasks;
@@ -96,6 +97,7 @@ internal static class Headline
         }
     }
 
+    // Only a bill run completes bills; the other modes count kills.
     private static (string Title, string Detail) LastRun(RunHistory history)
     {
         var records = history.Records;
@@ -105,6 +107,9 @@ internal static class Headline
         }
 
         var record = records[0];
-        return (Loc.T(L.Hunt.LastRun, record.MarksKilled), Loc.T(L.Hunt.LastRunDetail, Formatting.Elapsed(record.Duration), record.BillsCompleted));
+        var elapsed = Formatting.Elapsed(record.Duration);
+        return record.Mode == HuntMode.MarkBills
+            ? (Loc.T(L.Hunt.LastRun, record.MarksKilled), Loc.T(L.Hunt.LastRunDetail, elapsed, record.BillsCompleted))
+            : (Loc.T(L.Hunt.LastRunKills, record.MarksKilled), elapsed);
     }
 }

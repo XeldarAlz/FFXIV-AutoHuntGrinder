@@ -6,8 +6,6 @@ using Lumina.Excel.Sheets;
 
 namespace AutoHuntGrinder.Core.HuntingLog;
 
-// Every Hunting Log in game data, flattened into arrays that are built once and never change. A slot is the log's
-// index in MonsterNoteManager, numbered as ClassJob.MonsterNote and GrandCompany.MonsterNote number it.
 internal static class HuntingLogRegistry
 {
     public const byte NoLog = 0xFF;
@@ -27,15 +25,18 @@ internal static class HuntingLogRegistry
     private const int SourceKeyEntryFactor = 10;
     private const int SourceKeyDigit = 10;
 
-    // Lowest spawn level among each rank's targets in the position dataset; no game sheet carries a level per rank.
-    private static readonly byte[] ClassRankLevelFloors = [1, 10, 17, 30, 31];
-    private static readonly byte[] GrandCompanyRankLevelFloors = [18, 32, 47];
-
     private static Tables? tables;
+
+    // Lowest spawn level among each rank's targets in the position dataset; no game sheet carries a level per rank.
+    private static ReadOnlySpan<byte> ClassRankLevelFloors => [1, 10, 17, 30, 31];
+
+    private static ReadOnlySpan<byte> GrandCompanyRankLevelFloors => [18, 32, 47];
 
     private static Tables Data => tables ??= new TableBuilder().Build();
 
     public static ReadOnlySpan<HuntingLogBook> Books => Data.Books;
+
+    public static int TargetCount => Data.Targets.Length;
 
     public static bool TryGetBook(byte slot, out HuntingLogBook book)
     {
@@ -68,10 +69,6 @@ internal static class HuntingLogRegistry
 
     public static ReadOnlySpan<uint> Zones(in HuntingLogTarget target)
         => new(Data.Zones, target.FirstZone, target.ZoneCount);
-
-    // The sub-area PlaceName listed for each zone, aligned with Zones.
-    public static ReadOnlySpan<uint> Locations(in HuntingLogTarget target)
-        => new(Data.Locations, target.FirstZone, target.ZoneCount);
 
     public static string BookName(byte slot)
     {
@@ -198,7 +195,6 @@ internal static class HuntingLogRegistry
         public required HuntingLogTarget[] Targets { get; init; }
         public required string[] TargetNames { get; init; }
         public required uint[] Zones { get; init; }
-        public required uint[] Locations { get; init; }
         public required string[] LocationNames { get; init; }
         public required byte[] ClassJobSlots { get; init; }
     }
@@ -219,7 +215,6 @@ internal static class HuntingLogRegistry
         private readonly List<HuntingLogTarget> targets = [];
         private readonly List<string> targetNames = [];
         private readonly List<uint> zones = [];
-        private readonly List<uint> locations = [];
         private readonly List<string> locationNames = [];
         private int unresolvedZones;
 
@@ -248,7 +243,6 @@ internal static class HuntingLogRegistry
                 Targets = [.. targets],
                 TargetNames = [.. targetNames],
                 Zones = [.. zones],
-                Locations = [.. locations],
                 LocationNames = [.. locationNames],
                 ClassJobSlots = BuildClassJobSlots(),
             };
@@ -320,7 +314,6 @@ internal static class HuntingLogRegistry
         private void AddBook(byte slot, BookOwner owner)
         {
             var rowBase = owner.RowId * (owner.Kind == HuntingLogKind.Class ? ClassRowBaseFactor : GrandCompanyRowBaseFactor);
-            var firstEntry = (ushort)entries.Count;
             byte rankCount = 0;
             for (var rank = 0; rank < MaxRanks; rank++)
             {
@@ -341,9 +334,8 @@ internal static class HuntingLogRegistry
                 }
             }
 
-            var achievementId = HuntAchievements.ForLog(slot);
             bookIndexBySlot[slot] = (byte)books.Count;
-            books.Add(new HuntingLogBook(slot, owner.Kind, owner.RowId, rowBase, rankCount, AchievementIcon(achievementId), achievementId, firstEntry));
+            books.Add(new HuntingLogBook(slot, owner.Kind, owner.RowId, rowBase, rankCount, HuntAchievements.ForLog(slot)));
             bookNames.Add(owner.Name);
         }
 
@@ -369,7 +361,7 @@ internal static class HuntingLogRegistry
                 return false;
             }
 
-            entries.Add(new HuntingLogEntry(note.RowId, slot, rank, entryIndex, note.Reward, firstTarget, targetCount));
+            entries.Add(new HuntingLogEntry(slot, rank, entryIndex, firstTarget, targetCount));
             return true;
         }
 
@@ -377,7 +369,6 @@ internal static class HuntingLogRegistry
         {
             var firstZone = (ushort)zones.Count;
             byte zoneCount = 0;
-            uint firstListedLocation = 0;
             var inDuty = false;
             var listed = Math.Min(Math.Min(target.PlaceNameZone.Count, target.PlaceNameLocation.Count), ZonesPerTarget);
             for (var zoneIndex = 0; zoneIndex < listed; zoneIndex++)
@@ -389,11 +380,6 @@ internal static class HuntingLogRegistry
                 }
 
                 var locationPlaceId = target.PlaceNameLocation[zoneIndex].RowId;
-                if (firstListedLocation == 0)
-                {
-                    firstListedLocation = locationPlaceId;
-                }
-
                 inDuty |= dutyPlaces.Contains(locationPlaceId);
                 if (!openWorldTerritoryByPlace.TryGetValue(zonePlaceId, out var territoryId))
                 {
@@ -402,13 +388,11 @@ internal static class HuntingLogRegistry
                 }
 
                 zones.Add(territoryId);
-                locations.Add(locationPlaceId);
                 locationNames.Add(PlaceText(locationPlaceId));
                 zoneCount++;
             }
 
-            var locationPlaceIdForFirstZone = zoneCount > 0 ? locations[firstZone] : firstListedLocation;
-            targets.Add(new HuntingLogTarget(target.RowId, target.BNpcName.RowId, needed, targetSlot, firstZone, zoneCount, locationPlaceIdForFirstZone, inDuty));
+            targets.Add(new HuntingLogTarget(target.BNpcName.RowId, needed, targetSlot, firstZone, zoneCount, inDuty));
             targetNames.Add(NpcName(target.BNpcName));
         }
 
@@ -440,9 +424,6 @@ internal static class HuntingLogRegistry
             npcNames[reference.RowId] = name;
             return name;
         }
-
-        private static uint AchievementIcon(uint achievementId)
-            => achievementId == 0 ? 0 : Svc.Data.GetExcelSheet<Achievement>().GetRowOrDefault(achievementId)?.Icon ?? 0;
 
         // A job without its own log falls back to its parent class's, the log its kills advance.
         private static byte[] BuildClassJobSlots()

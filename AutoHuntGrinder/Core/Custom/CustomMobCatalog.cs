@@ -15,13 +15,9 @@ internal static class CustomMobCatalog
     private static readonly Dictionary<uint, string> unlistedNames = new();
     private static CatalogArrays? arrays;
 
-    public static int Count => Loaded.NameIds.Length;
-
     public static ReadOnlySpan<uint> NameIds => Loaded.NameIds;
 
     public static ReadOnlySpan<string> Names => Loaded.Names;
-
-    public static ReadOnlySpan<string> SearchKeys => Loaded.SearchKeys;
 
     private static CatalogArrays Loaded => arrays ??= Load();
 

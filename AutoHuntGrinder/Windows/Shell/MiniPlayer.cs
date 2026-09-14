@@ -62,7 +62,7 @@ internal static class MiniPlayer
         }
 
         var textX = origin.X + padX + 22f * scale;
-        var phase = controller.Paused ? Loc.T(L.Run.PhasePaused) : ReadyState.PhaseLabel(controller.Phase);
+        var phase = controller.Paused ? Loc.T(L.Run.PhasePaused) : ReadyState.PhaseLabel(controller.Phase, controller.Mode);
         var phaseSize = TextDraw.SmallCapsSize(phase);
         var lineHeight = ImGui.GetTextLineHeight();
         var gap = 2f * scale;

@@ -10,8 +10,6 @@ using ClientAchievementState = FFXIVClientStructs.FFXIV.Client.Game.UI.Achieveme
 
 namespace AutoHuntGrinder.Core.Debug;
 
-// Raw Hunting Log and achievement state for checks only the live game can settle: what Rank and Index hold, whether
-// the records fill at login, how the achievement list loads, and how ClassJob.MonsterNote reads a missing log.
 internal static unsafe class HuntingLogDumper
 {
     // MonsterNoteRankInfo fields ClientStructs keeps private: suspected flags at 0x34 and what looks like padding at 0x3C.

@@ -6,8 +6,6 @@ using System.Threading.Tasks;
 
 namespace AutoHuntGrinder.Core.Tasks;
 
-// The pass loop shared by the Hunting Log and custom list runs: each planned objective gets the same upkeep, knockout
-// recovery and outcome handling the bill run gives a mark.
 internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress progress) : AutoCommon
 {
     private const int CharacterReadyWaitMs = 30_000;
@@ -48,7 +46,6 @@ internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress 
         return false;
     }
 
-    // False when the run has to stop.
     private protected async Task<bool> HuntObjectives(HuntObjective[] planned, int pass)
     {
         ReportObjectives(planned);

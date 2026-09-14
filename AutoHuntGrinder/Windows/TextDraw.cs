@@ -43,6 +43,12 @@ internal static class TextDraw
     public static void Wrapped(string text, Vector2 pos, float wrapWidth, Vector4 color)
         => ImGui.GetWindowDrawList().AddText(ImGui.GetFont(), ImGui.GetFontSize(), pos, Paint.Col(color), text, wrapWidth);
 
+    public static void Hint(string text)
+    {
+        At(text, ImGui.GetCursorScreenPos(), Styling.TextMuted);
+        ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetTextLineHeight()));
+    }
+
     public static Vector2 IconSize(FontAwesomeIcon icon)
     {
         using (ImRaii.PushFont(UiBuilder.IconFont))

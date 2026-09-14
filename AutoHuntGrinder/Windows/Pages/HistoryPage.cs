@@ -17,6 +17,7 @@ internal sealed class HistoryPage
     private const float MetricWidth = 64f;
     private const float ModeIconColumn = 18f;
     private const float ConfirmSlide = 12f;
+    private const string NoValue = "-";
 
     private bool confirmClear;
 
@@ -153,11 +154,19 @@ internal sealed class HistoryPage
 
         if (hovered >= 0)
         {
-            var record = records[count - 1 - hovered];
-            Tooltip.Show(Loc.T(L.History.ChartTooltip, RelativeTime(record.EndedAtUtc), record.MarksKilled, record.BillsCompleted, Formatting.Elapsed(record.Duration)));
+            Tooltip.Show(ChartTooltip(records[count - 1 - hovered]));
         }
 
         ImGui.Dummy(size);
+    }
+
+    private static string ChartTooltip(RunRecord record)
+    {
+        var when = RelativeTime(record.EndedAtUtc);
+        var elapsed = Formatting.Elapsed(record.Duration);
+        return record.Mode == HuntMode.MarkBills
+            ? Loc.T(L.History.ChartTooltip, when, record.MarksKilled, record.BillsCompleted, elapsed)
+            : Loc.T(L.History.ChartTooltipKills, when, record.MarksKilled, elapsed);
     }
 
     private static void DrawRow(RunRecord record, int index)
@@ -185,7 +194,7 @@ internal sealed class HistoryPage
         var midY = origin.Y + size.Y * 0.5f;
         var textX = DrawModeIcon(record.Mode, origin.X + padX, midY);
         var when = RelativeTime(record.EndedAtUtc);
-        var job = string.IsNullOrEmpty(record.JobAbbreviation) ? "—" : record.JobAbbreviation;
+        var job = string.IsNullOrEmpty(record.JobAbbreviation) ? NoValue : record.JobAbbreviation;
         var detail = Loc.T(L.History.RowDetail, HuntModeLabels.Label(record.Mode), job, Formatting.Elapsed(record.Duration));
 
         var whenSize = TextDraw.Measure(when);
@@ -202,15 +211,20 @@ internal sealed class HistoryPage
             TextDraw.At(detail, new Vector2(textX, top + whenSize.Y + 3f * scale), Styling.TextDim);
         }
 
+        var billRun = record.Mode == HuntMode.MarkBills;
         var metricWidth = MetricWidth * scale;
         var x = end.X - padX - metricWidth;
         DrawMetric(x, midY, metricWidth, Metric(record.Nuts), Loc.T(L.History.TileNuts), record.Nuts > 0 ? Styling.AccentNebula : Styling.TextMuted);
         x -= metricWidth;
         DrawMetric(x, midY, metricWidth, Metric(record.Seals), Loc.T(L.History.TileSeals), record.Seals > 0 ? Styling.AccentAmber : Styling.TextMuted);
         x -= metricWidth;
-        DrawMetric(x, midY, metricWidth, Metric(record.BillsCompleted), Loc.T(L.History.TileBills), record.BillsCompleted > 0 ? Styling.AccentMint : Styling.TextMuted);
+        if (billRun)
+        {
+            DrawMetric(x, midY, metricWidth, Metric(record.BillsCompleted), Loc.T(L.History.TileBills), record.BillsCompleted > 0 ? Styling.AccentMint : Styling.TextMuted);
+        }
+
         x -= metricWidth;
-        DrawMetric(x, midY, metricWidth, record.MarksKilled.ToString(Loc.Culture), Loc.T(L.History.TileMarks), Styling.AccentBlue);
+        DrawMetric(x, midY, metricWidth, record.MarksKilled.ToString(Loc.Culture), Loc.T(billRun ? L.History.TileMarks : L.History.TileKills), Styling.AccentBlue);
 
         if (hit.Hovered)
         {
@@ -229,7 +243,7 @@ internal sealed class HistoryPage
         return x + column + 10f * scale;
     }
 
-    private static string Metric(int value) => value > 0 ? value.ToString("N0", Loc.Culture) : "—";
+    private static string Metric(int value) => value > 0 ? value.ToString("N0", Loc.Culture) : NoValue;
 
     private static void DrawMetric(float x, float midY, float width, string value, string label, Vector4 color)
     {
@@ -247,7 +261,8 @@ internal sealed class HistoryPage
         var lines = record.EndedAtUtc.ToLocalTime().ToString("g", Loc.Culture);
         if (record.MarksPerHour > 0)
         {
-            lines += "\n" + Loc.T(L.History.TooltipRate, record.MarksPerHour.ToString("F1", Loc.Culture));
+            var rate = record.MarksPerHour.ToString("F1", Loc.Culture);
+            lines += "\n" + Loc.T(record.Mode == HuntMode.MarkBills ? L.History.TooltipRate : L.History.TooltipRateKills, rate);
         }
 
         if (record.BillNames.Count > 0)
@@ -289,7 +304,7 @@ internal sealed class HistoryPage
     private void DrawClearControl(RunHistory history)
     {
         var scale = ImGuiHelpers.GlobalScale;
-        var avail = ImGui.GetContentRegionAvail().X;
+        var available = ImGui.GetContentRegionAvail().X;
         var origin = ImGui.GetCursorScreenPos();
         var reveal = Motion.Transition(Motion.Key("##ahg_hist_clear_state"), confirmClear);
         var slide = (1f - reveal) * ConfirmSlide * scale;
@@ -298,7 +313,7 @@ internal sealed class HistoryPage
         if (!confirmClear)
         {
             var label = Loc.T(L.History.ClearHistory);
-            ImGui.SetCursorScreenPos(new Vector2(origin.X + avail - PillButton.Width(label, FontAwesomeIcon.Trash) - slide, origin.Y));
+            ImGui.SetCursorScreenPos(new Vector2(origin.X + available - PillButton.Width(label, FontAwesomeIcon.Trash) - slide, origin.Y));
             if (PillButton.Draw("##ahg_hist_clear", label, Styling.AccentRose, PillButton.Emphasis.Ghost, FontAwesomeIcon.Trash))
             {
                 confirmClear = true;
@@ -316,7 +331,7 @@ internal sealed class HistoryPage
         var gap = 8f * scale;
         var buttonHeight = 28f * scale;
 
-        var x = origin.X + avail - noWidth - slide;
+        var x = origin.X + available - noWidth - slide;
         ImGui.SetCursorScreenPos(new Vector2(x, origin.Y));
         if (PillButton.Draw("##ahg_hist_clear_no", no, Styling.AccentGlow, PillButton.Emphasis.Ghost))
         {

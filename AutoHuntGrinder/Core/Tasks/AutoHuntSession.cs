@@ -12,11 +12,14 @@ public sealed class AutoHuntSession
     private readonly LogLedger[] logLedgers;
     private readonly MobLedger[] mobLedgers;
     private readonly string[] billNames;
+    private readonly byte[] logPassesUsed;
     private readonly HashSet<uint> givenUpObjectives = [];
     private readonly HashSet<uint> notices = [];
 
     private HuntWallet lastWallet;
     private bool walletKnown;
+    private ushort endedLogs;
+    private ushort logsAtStopCondition;
 
     private long pausedMs;
     private long pauseStartedAtMs;
@@ -35,6 +38,7 @@ public sealed class AutoHuntSession
 
         logLedgers = [];
         mobLedgers = [];
+        logPassesUsed = [];
         JobAbbreviation = CurrentJobAbbreviation();
         Rebaseline();
     }
@@ -52,6 +56,7 @@ public sealed class AutoHuntSession
 
         ledgers = [];
         mobLedgers = [];
+        logPassesUsed = new byte[HuntingLogRegistry.SlotCount];
         JobAbbreviation = CurrentJobAbbreviation();
         Rebaseline();
     }
@@ -72,7 +77,7 @@ public sealed class AutoHuntSession
             }
 
             tracked.Add(new MobLedger(entry.NameId));
-            if (entry.Enabled && entry.Killed < entry.Needed)
+            if (CustomMobList.NeedsKills(entry))
             {
                 names.Add(CustomMobCatalog.NameOf(entry.NameId));
             }
@@ -82,6 +87,7 @@ public sealed class AutoHuntSession
         billNames = [.. names];
         ledgers = [];
         logLedgers = [];
+        logPassesUsed = [];
         JobAbbreviation = CurrentJobAbbreviation();
         Rebaseline();
     }
@@ -92,10 +98,9 @@ public sealed class AutoHuntSession
 
     public string JobAbbreviation { get; private set; }
 
-    // The bills, Hunting Logs or custom mobs the run works, by name.
+    // Both keep the names RunRecord stores them under; in the other modes they hold the logs or mobs worked and their kills.
     public IReadOnlyList<string> BillNames => billNames;
 
-    // Every credited kill, whatever the mode: marks on bills, Hunting Log targets or custom mobs.
     public int MarksKilled { get; private set; }
 
     public int BillsCompleted { get; private set; }
@@ -137,6 +142,34 @@ public sealed class AutoHuntSession
 
     // True the first time a key comes up in this run, so a notice is not repeated after a Resume or a fault restart.
     internal bool Notice(uint key) => notices.Add(key);
+
+    internal bool IsLogEnded(byte slot) => HasSlot(endedLogs, slot);
+
+    internal bool LogMetStopCondition(byte slot) => HasSlot(logsAtStopCondition, slot);
+
+    internal void EndLog(byte slot, bool metStopCondition)
+    {
+        if (slot >= HuntingLogRegistry.SlotCount)
+        {
+            return;
+        }
+
+        endedLogs |= (ushort)(1 << slot);
+        if (metStopCondition)
+        {
+            logsAtStopCondition |= (ushort)(1 << slot);
+        }
+    }
+
+    internal int LogPassesUsed(byte slot) => slot < logPassesUsed.Length ? logPassesUsed[slot] : 0;
+
+    internal void CountLogPass(byte slot)
+    {
+        if (slot < logPassesUsed.Length && logPassesUsed[slot] < byte.MaxValue)
+        {
+            logPassesUsed[slot]++;
+        }
+    }
 
     public void Sample()
     {
@@ -369,6 +402,8 @@ public sealed class AutoHuntSession
     // Only rises count, because a spend between two samples would otherwise cancel out currency the run earned.
     private static int CurrencyGained(int before, int after) => after > before ? after - before : 0;
 
+    private static bool HasSlot(ushort slots, byte slot) => slot < HuntingLogRegistry.SlotCount && (slots & (1 << slot)) != 0;
+
     // A finished rank reads full, so the sum only grows as the log advances even though the game resets its counts
     // whenever a rank opens.
     private static int BookKills(byte slot)
@@ -388,19 +423,7 @@ public sealed class AutoHuntSession
     }
 
     // -1 when the mob is no longer on the list.
-    private static int CustomKilled(uint nameId)
-    {
-        var entries = Plugin.Instance.Configuration.CustomMobs;
-        for (var index = 0; index < entries.Count; index++)
-        {
-            if (entries[index].NameId == nameId)
-            {
-                return entries[index].Killed;
-            }
-        }
-
-        return -1;
-    }
+    private static int CustomKilled(uint nameId) => CustomMobList.Find(nameId)?.Killed ?? -1;
 
     private static bool IsHeld(BillStatus status) => status is BillStatus.Held or BillStatus.Stale;
 

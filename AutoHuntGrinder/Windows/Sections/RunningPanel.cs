@@ -15,13 +15,26 @@ internal static class RunningPanel
 {
     private const float PadX = 18f;
     private const int QueueLength = 6;
+    private const int InPlayModeShift = 56;
+    private const int InPlayTerritoryShift = 24;
+    private const long InPlayCountMask = 0xFF_FFFF;
+    private const int RowZoneShift = 32;
+    private const int RowKilledShift = 16;
+    private const long RowZoneMask = 0x7FFF_FFFF;
+    private const long RowCountMask = 0xFFFF;
+    // Bill rows take their zone name from the mark's map rather than its territory, so they are keyed by target row.
+    private const long BillRowFlag = long.MinValue;
 
     private static readonly List<QueueEntry> queue = new(32);
     private static readonly List<HuntObjective> objectiveQueue = new(QueueLength);
     private static readonly Comparison<QueueEntry> byZone = (left, right) => left.Target.TerritoryId.CompareTo(right.Target.TerritoryId);
+    private static readonly CachedText[] rowMeta = new CachedText[QueueLength];
 
     private static uint cachedTerritoryId = uint.MaxValue;
     private static string cachedZoneName = string.Empty;
+    private static CachedText inPlayText;
+    private static CachedText targetsDoneText;
+    private static CachedText targetsGoalText;
 
     private readonly record struct QueueEntry(byte MarkIndex, HuntTarget Target, bool Stale);
 
@@ -53,21 +66,31 @@ internal static class RunningPanel
 
     private static string InPlay(AutoHuntController controller)
     {
-        var zoneName = CurrentZoneName();
-        return controller.Mode switch
+        var mode = controller.Mode;
+        var count = mode switch
         {
-            HuntMode.HuntingLog => Loc.Plural(L.Run.LogsInPlay, controller.ActiveHuntingLogSlots.Count, zoneName),
-            HuntMode.CustomList => Loc.Plural(L.Run.MobsInPlay, controller.SessionSnapshot?.BillNames.Count ?? 0, zoneName),
-            _ => Loc.Plural(L.Run.InPlay, controller.ActiveBills.Count, zoneName),
+            HuntMode.HuntingLog => controller.ActiveHuntingLogSlots.Count,
+            HuntMode.CustomList => controller.SessionSnapshot?.BillNames.Count ?? 0,
+            _ => controller.ActiveBills.Count,
         };
+        uint territoryId = Svc.ClientState.TerritoryType;
+        var key = (long)mode << InPlayModeShift | (long)territoryId << InPlayTerritoryShift | (count & InPlayCountMask);
+        return inPlayText.Get(key, static key => Loc.Plural(InPlayFormat((HuntMode)(key >> InPlayModeShift)), (int)(key & InPlayCountMask), CurrentZoneName()));
     }
+
+    private static LocPlural InPlayFormat(HuntMode mode) => mode switch
+    {
+        HuntMode.HuntingLog => L.Run.LogsInPlay,
+        HuntMode.CustomList => L.Run.MobsInPlay,
+        _ => L.Run.InPlay,
+    };
 
     private static void DrawHeaderStrip(string footer, Vector4 accent, Vector4 accentSoft, bool paused)
     {
         var scale = ImGuiHelpers.GlobalScale;
         var drawList = ImGui.GetWindowDrawList();
         var origin = ImGui.GetCursorScreenPos();
-        var avail = ImGui.GetContentRegionAvail().X;
+        var available = ImGui.GetContentRegionAvail().X;
         var lineHeight = ImGui.GetTextLineHeight();
         var midY = origin.Y + lineHeight * 0.5f;
 
@@ -82,10 +105,10 @@ internal static class RunningPanel
         using (Fonts.PushCaption())
         {
             var footerSize = TextDraw.Measure(footer);
-            TextDraw.At(footer, new Vector2(origin.X + avail - footerSize.X, midY - footerSize.Y * 0.5f), Styling.TextMuted);
+            TextDraw.At(footer, new Vector2(origin.X + available - footerSize.X, midY - footerSize.Y * 0.5f), Styling.TextMuted);
         }
 
-        ImGui.Dummy(new Vector2(avail, lineHeight));
+        ImGui.Dummy(new Vector2(available, lineHeight));
     }
 
     private static void DrawHeroCard(AutoHuntController controller, BillSelection.Workload workload, bool objectiveRun, Vector4 accent, Vector4 accentSoft, string label)
@@ -244,7 +267,7 @@ internal static class RunningPanel
             HuntPhase.Fighting  => (Styling.AccentGlow, Styling.AccentGlowSoft, Loc.T(L.Run.PhaseFighting)),
             HuntPhase.Finishing => (Styling.AccentMint,  Styling.AccentMintSoft,  Loc.T(L.Run.PhaseFinishing)),
             HuntPhase.Idle      => (Styling.TextDim,     Styling.TextSecondary,   Loc.T(L.Run.PhaseStandingBy)),
-            _                   => (Styling.AccentBlue,  Styling.AccentBlueSoft,  ReadyState.PhaseLabel(controller.Phase)),
+            _                   => (Styling.AccentBlue,  Styling.AccentBlueSoft,  ReadyState.PhaseLabel(controller.Phase, controller.Mode)),
         };
     }
 
@@ -261,7 +284,9 @@ internal static class RunningPanel
         if (objectiveRun)
         {
             var objectives = controller.Objectives;
-            StatTile.Draw(Loc.T(L.Run.TileTargets), RunWorkload.CountDone(objectives).ToString(Loc.Culture), Loc.T(L.Run.GoalOf, objectives.Count), Styling.AccentMint, tileWidth);
+            var done = targetsDoneText.Get(RunWorkload.CountDone(objectives), static key => key.ToString(Loc.Culture));
+            var goal = targetsGoalText.Get(objectives.Count, static key => Loc.T(L.Run.GoalOf, key));
+            StatTile.Draw(Loc.T(L.Run.TileTargets), done, goal, Styling.AccentMint, tileWidth);
         }
         else
         {
@@ -300,7 +325,7 @@ internal static class RunningPanel
 
         if (queue.Count == 0)
         {
-            EmptyHint(workload.PickUps > 0 ? Loc.T(L.Run.PickUpFirst) : Loc.T(L.Run.NoMarksLeft));
+            TextDraw.Hint(workload.PickUps > 0 ? Loc.T(L.Run.PickUpFirst) : Loc.T(L.Run.NoMarksLeft));
             return;
         }
 
@@ -308,7 +333,8 @@ internal static class RunningPanel
         for (var index = 0; index < shown; index++)
         {
             var target = queue[index].Target;
-            DrawQueueRow(target.Name, target.ZoneName, target.Killed, target.Needed, queue[index].Stale, index == 0);
+            DrawQueueRow(index, target.Name, target.ZoneName, target.Killed, target.Needed,
+                BillRowFlag | RowKey(target.TargetRowId, target.Killed, target.Needed), queue[index].Stale);
         }
     }
 
@@ -332,15 +358,16 @@ internal static class RunningPanel
 
         if (objectiveQueue.Count == 0)
         {
-            EmptyHint(controller.Objectives.Count == 0 ? Loc.T(L.Run.RouteFirst) : Loc.T(L.Run.NoTargetsLeft));
+            TextDraw.Hint(controller.Objectives.Count == 0 ? Loc.T(L.Run.RouteFirst) : Loc.T(L.Run.NoTargetsLeft));
             return;
         }
 
         for (var index = 0; index < objectiveQueue.Count; index++)
         {
             var objective = objectiveQueue[index];
-            DrawQueueRow(ObjectiveProgress.Name(objective), CurrentMark.ZoneName(objective.TerritoryId),
-                Math.Min(objective.Killed, objective.Needed), objective.Needed, false, index == 0);
+            var killed = Math.Min(objective.Killed, objective.Needed);
+            DrawQueueRow(index, ObjectiveProgress.Name(objective), CurrentMark.ZoneName(objective.TerritoryId), killed, objective.Needed,
+                RowKey(objective.TerritoryId, killed, objective.Needed), false);
         }
     }
 
@@ -414,8 +441,12 @@ internal static class RunningPanel
         }
     }
 
-    private static void DrawQueueRow(string name, string zoneName, int killed, int needed, bool stale, bool emphasize)
+    private static long RowKey(uint zoneSource, int killed, int needed)
+        => (zoneSource & RowZoneMask) << RowZoneShift | (killed & RowCountMask) << RowKilledShift | (needed & RowCountMask);
+
+    private static void DrawQueueRow(int index, string name, string zoneName, int killed, int needed, long metaKey, bool stale)
     {
+        var emphasize = index == 0;
         var scale = ImGuiHelpers.GlobalScale;
         var size = new Vector2(ImGui.GetContentRegionAvail().X, Layout.QueueRowHeight * scale);
         var origin = ImGui.GetCursorScreenPos();
@@ -430,7 +461,11 @@ internal static class RunningPanel
         var iconSize = TextDraw.IconSize(FontAwesomeIcon.Crosshairs);
         TextDraw.Icon(FontAwesomeIcon.Crosshairs, new Vector2(origin.X + padX, topY + (ImGui.GetTextLineHeight() - iconSize.Y) * 0.5f), emphasize ? accent : Styling.TextDim);
 
-        var meta = Loc.T(L.Run.TargetMeta, zoneName, killed, needed);
+        if (!rowMeta[index].TryGet(metaKey, out var meta))
+        {
+            meta = rowMeta[index].Set(metaKey, Loc.T(L.Run.TargetMeta, zoneName, killed, needed));
+        }
+
         Vector2 metaSize;
         using (Fonts.PushCaption())
         {
@@ -464,12 +499,5 @@ internal static class RunningPanel
         }
 
         return cachedZoneName;
-    }
-
-    private static void EmptyHint(string text)
-    {
-        var origin = ImGui.GetCursorScreenPos();
-        TextDraw.At(text, origin, Styling.TextMuted);
-        ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetTextLineHeight()));
     }
 }

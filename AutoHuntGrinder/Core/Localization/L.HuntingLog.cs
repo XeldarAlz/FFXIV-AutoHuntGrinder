@@ -65,9 +65,11 @@ internal static partial class L
         public static readonly LocString BadgeInDuty = new("huntingLog.badge.inDuty", "In a duty: skipped");
         public static readonly LocString BadgeAreaOnly = new("huntingLog.badge.areaOnly", "Area only");
         public static readonly LocString BadgeNoSpawns = new("huntingLog.badge.noSpawns", "No spawn data");
+        public static readonly LocString BadgeFateOnly = new("huntingLog.badge.fateOnly", "FATE only");
         public static readonly LocString InDutyHelp = new("huntingLog.badge.inDutyHelp", "This target lives inside a duty, so the run leaves it to you.");
         public static readonly LocString AreaOnlyHelp = new("huntingLog.badge.areaOnlyHelp", "Only the sub-area is known, so the run sweeps it until the target shows up.");
         public static readonly LocString NoSpawnsHelp = new("huntingLog.badge.noSpawnsHelp", "No known spawn points, so the run leaves this target to you.");
+        public static readonly LocString FateOnlyHelp = new("huntingLog.badge.fateOnlyHelp", "Only known to spawn in FATEs, and the run never fights a FATE's monsters, so it leaves this target to you.");
 
         public static readonly LocString Completes = new("huntingLog.footer.completes", "Completes {0}");
         public static readonly LocString Earned = new("huntingLog.footer.earned", "Earned");

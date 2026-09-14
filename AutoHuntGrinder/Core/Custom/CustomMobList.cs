@@ -6,6 +6,8 @@ namespace AutoHuntGrinder.Core.Custom;
 
 internal static class CustomMobList
 {
+    private const int NotListed = -1;
+
     private static KillLedger? activeLedger;
 
     private static Configuration Configuration => Plugin.Instance.Configuration;
@@ -67,21 +69,46 @@ internal static class CustomMobList
         }
     }
 
-    public static bool Contains(uint nameId)
+    private static int IndexOf(uint nameId)
     {
         var entries = Entries;
         for (var index = 0; index < entries.Count; index++)
         {
             if (entries[index].NameId == nameId)
             {
-                return true;
+                return index;
             }
         }
 
-        return false;
+        return NotListed;
     }
 
-    public static ushort Killed(int index) => InRange(index) ? Entries[index].Killed : (ushort)0;
+    public static CustomMobEntry? Find(uint nameId)
+    {
+        var index = IndexOf(nameId);
+        return index == NotListed ? null : Entries[index];
+    }
+
+    public static bool Contains(uint nameId) => IndexOf(nameId) != NotListed;
+
+    public static bool NeedsKills(CustomMobEntry entry) => entry.Enabled && entry.NameId != 0 && entry.Killed < entry.Needed;
+
+    public static int CountNeedingKills()
+    {
+        var entries = Entries;
+        var count = 0;
+        for (var index = 0; index < entries.Count; index++)
+        {
+            if (NeedsKills(entries[index]))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    public static bool CanHunt(CustomMobEntry entry) => ObjectivePlanner.CanHunt(ObjectiveFor(entry, 0));
 
     public static void BuildObjectives(List<HuntObjective> destination)
     {
@@ -90,12 +117,10 @@ internal static class CustomMobList
         for (var index = 0; index < entries.Count; index++)
         {
             var entry = entries[index];
-            if (!NeedsKills(entry))
+            if (NeedsKills(entry))
             {
-                continue;
+                destination.Add(ObjectiveFor(entry, index));
             }
-
-            destination.Add(new HuntObjective(ObjectiveSource.Custom, (ushort)index, entry.NameId, entry.PinnedTerritoryId, entry.Needed, entry.Killed));
         }
     }
 
@@ -129,23 +154,25 @@ internal static class CustomMobList
 
     private static void OnCredited(uint nameId)
     {
-        var entries = Entries;
-        for (var index = 0; index < entries.Count; index++)
+        var index = IndexOf(nameId);
+        if (index == NotListed)
         {
-            var entry = entries[index];
-            if (entry.NameId != nameId || !NeedsKills(entry))
-            {
-                continue;
-            }
-
-            entry.Killed++;
-            Svc.Log.Info($"{AhgConstants.LogPrefix} Custom list: entry {index} (BNpcName {nameId}) now {entry.Killed}/{entry.Needed}");
-            Configuration.SaveDebounced();
             return;
         }
+
+        var entry = Entries[index];
+        if (!NeedsKills(entry))
+        {
+            return;
+        }
+
+        entry.Killed++;
+        Svc.Log.Info($"{AhgConstants.LogPrefix} Custom list: entry {index} (BNpcName {nameId}) now {entry.Killed}/{entry.Needed}");
+        Configuration.SaveDebounced();
     }
 
-    private static bool NeedsKills(CustomMobEntry entry) => entry.Enabled && entry.NameId != 0 && entry.Killed < entry.Needed;
+    private static HuntObjective ObjectiveFor(CustomMobEntry entry, int index)
+        => new(ObjectiveSource.Custom, (ushort)index, entry.NameId, entry.PinnedTerritoryId, entry.Needed, entry.Killed);
 
     private static bool InRange(int index) => (uint)index < (uint)Entries.Count;
 }

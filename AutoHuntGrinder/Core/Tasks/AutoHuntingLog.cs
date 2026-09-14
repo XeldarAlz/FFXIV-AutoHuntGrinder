@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Achievements;
 using AutoHuntGrinder.Core.Game.Ops;
 using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Hunts;
@@ -8,8 +9,6 @@ using System.Threading.Tasks;
 
 namespace AutoHuntGrinder.Core.Tasks;
 
-// Works the queued logs in order, one rank at a time. Each pass hunts what the current rank still needs; a rank that
-// fills opens the next, and a log ends once it is complete, nothing left on it can be hunted, or a pass credits nothing.
 internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession session, HuntProgress progress) : AutoObjectiveHunt(session, progress)
 {
     // Five ranks, each normally one or two passes, with room for targets that stay hidden a while.
@@ -17,6 +16,7 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
     private const int GearsetCombatClearMs = 30_000;
     // The next rank opens a moment after the last count of the old one lands.
     private const int RankOpenWaitMs = 10_000;
+    private const int AchievementLoadWaitMs = 5_000;
     // Notice keys sit above every objective key, which fits in 17 bits.
     private const uint ForeignCompanyNotice = 0x0100_0000;
     private const uint NoGearsetNotice = 0x0200_0000;
@@ -27,8 +27,9 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
     private readonly IReadOnlyList<byte> slots = slots;
     private readonly List<HuntObjective> objectives = new(HuntingLogRegistry.EntriesPerRank * HuntingLogRegistry.TargetsPerEntry);
     private readonly List<string> leftOutNames = [];
+    private int givenUpTargets;
 
-    private enum BookEnd : byte { Complete, Skipped, Stalled, Stopped }
+    private enum BookEnd : byte { Complete, LeftToPlayer, Skipped, Stalled, Stopped }
 
     protected override async Task Execute()
     {
@@ -50,18 +51,57 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
             return;
         }
 
+        await LoadAchievements();
+        if (CancelToken.IsCancellationRequested)
+        {
+            return;
+        }
+
         for (var slotIndex = 0; slotIndex < slots.Count; slotIndex++)
         {
             var slot = slots[slotIndex];
+            if (RunSession.IsLogEnded(slot))
+            {
+                Diag($"Run: the {HuntingLogRegistry.BookName(slot)} log already ended earlier in this run; skipping it");
+                continue;
+            }
+
             var end = await WorkBook(slot);
             Diag($"Run: the {HuntingLogRegistry.BookName(slot)} log (slot {slot}) ended {end}");
             if (end == BookEnd.Stopped)
             {
                 return;
             }
+
+            // A skipped log gets another try after a Resume, since a gearset saved during the pause lets it start.
+            if (end != BookEnd.Skipped)
+            {
+                RunSession.EndLog(slot, metStopCondition: end != BookEnd.Stalled);
+            }
         }
 
         Finish();
+    }
+
+    // A finished log may keep its last rank with its counts cleared, and then only its achievement shows it complete.
+    private async Task LoadAchievements()
+    {
+        if (AchievementReader.IsLoaded)
+        {
+            return;
+        }
+
+        Status = "Reading your achievements";
+        var requested = AchievementReader.RequestLoad();
+        var loaded = await WaitUntilTimed(static () => AchievementReader.IsLoaded, AchievementLoadWaitMs, "achievements-loaded");
+        if (CancelToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        Diag(loaded
+            ? $"Run: the achievement list is loaded ({(requested ? "asked for it now" : "a request was already out")})"
+            : $"Run: the achievement list did not load within {AchievementLoadWaitMs / TimeUnits.MillisecondsPerSecond}s (state {AchievementReader.LoadState()?.ToString() ?? "unreadable"}); log completion rests on the counts alone");
     }
 
     private async Task<BookEnd> WorkBook(byte slot)
@@ -90,7 +130,7 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
             return CancelToken.IsCancellationRequested ? BookEnd.Stopped : BookEnd.Skipped;
         }
 
-        for (var pass = 1; pass <= MaxPassesPerBook; pass++)
+        for (var pass = RunSession.LogPassesUsed(slot) + 1; pass <= MaxPassesPerBook; pass++)
         {
             if (await WorkPass(slot, bookName, pass) is { } end)
             {
@@ -102,7 +142,6 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
         return BookEnd.Stalled;
     }
 
-    // Null when the log wants another pass.
     private async Task<BookEnd?> WorkPass(byte slot, string bookName, int pass)
     {
         if (!await EnsureStanding())
@@ -111,14 +150,9 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
         }
 
         HuntingLogReader.Refresh(force: true);
-        switch (HuntingLogReader.Status(slot))
+        if (EndIfSettled(slot, bookName) is { } settled)
         {
-            case HuntingLogStatus.Complete:
-                AnnounceComplete(bookName);
-                return BookEnd.Complete;
-            case HuntingLogStatus.Unavailable:
-                Warn($"Run: the {bookName} log reads unavailable; skipping it");
-                return BookEnd.Skipped;
+            return settled;
         }
 
         var rank = HuntingLogReader.CurrentRank(slot);
@@ -126,7 +160,7 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
         CollectObjectives(slot, rank, bookName);
         if (objectives.Count == 0)
         {
-            return await WaitForNextRank(slot, rank, bookName) ? null : BookEnd.Stalled;
+            return await WaitForNextRank(slot, rank, bookName);
         }
 
         Status = "Planning the route";
@@ -139,11 +173,11 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
         }
 
         RunSession.HuntPassesCompleted++;
+        RunSession.CountLogPass(slot);
         HuntingLogReader.Refresh(force: true);
-        if (HuntingLogReader.Status(slot) == HuntingLogStatus.Complete)
+        if (EndIfSettled(slot, bookName) is { } end)
         {
-            AnnounceComplete(bookName);
-            return BookEnd.Complete;
+            return end;
         }
 
         var rankNow = HuntingLogReader.CurrentRank(slot);
@@ -160,6 +194,21 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
 
         Diag($"Run: pass {pass} on the {bookName} log credited no kill; not planning another");
         return BookEnd.Stalled;
+    }
+
+    private BookEnd? EndIfSettled(byte slot, string bookName)
+    {
+        switch (HuntingLogReader.Status(slot))
+        {
+            case HuntingLogStatus.Complete:
+                AnnounceComplete(bookName);
+                return BookEnd.Complete;
+            case HuntingLogStatus.Unavailable:
+                Warn($"Run: the {bookName} log reads unavailable; skipping it");
+                return BookEnd.Skipped;
+            default:
+                return null;
+        }
     }
 
     private async Task<bool> PrepareBook(HuntingLogBook book, string bookName)
@@ -232,6 +281,7 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
     {
         objectives.Clear();
         leftOutNames.Clear();
+        givenUpTargets = 0;
         var entries = HuntingLogRegistry.Rank(slot, rank);
         for (var entryOffset = 0; entryOffset < entries.Length; entryOffset++)
         {
@@ -249,16 +299,18 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
                 var objective = new HuntObjective(ObjectiveSource.HuntingLog, HuntingLogRegistry.SourceKey(entry, target), target.NameId, TerritoryFor(target), target.Needed, killed);
                 if (RunSession.IsGivenUp(objective))
                 {
+                    givenUpTargets++;
                     continue;
                 }
 
-                if (!target.InDuty && MobSpawns.IsSupported(target.NameId))
+                var coverage = HuntingLogCoverage.Of(entry.FirstTarget + targetOffset, target);
+                if (HuntingLogCoverage.IsHuntable(coverage))
                 {
                     objectives.Add(objective);
                     continue;
                 }
 
-                if (NoteLeftOut(objective, target.InDuty ? "lives inside a duty" : "has no known spawn points"))
+                if (NoteLeftOut(objective, LeftOutReason(coverage)))
                 {
                     leftOutNames.Add(ObjectiveProgress.Name(objective));
                 }
@@ -268,28 +320,34 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
         if (leftOutNames.Count > 0)
         {
             var one = leftOutNames.Count == 1;
-            Svc.Chat.Print($"{AhgConstants.LogPrefix} On {bookName} rank {rank + 1}, {string.Join(", ", leftOutNames)} {(one ? "is" : "are")} inside a duty or without known spawn points, so the run leaves {(one ? "it" : "them")} to you.");
+            Svc.Chat.Print($"{AhgConstants.LogPrefix} On {bookName} rank {rank + 1}, {string.Join(", ", leftOutNames)} {(one ? "is" : "are")} inside a duty, only known from FATEs or without known spawn points, so the run leaves {(one ? "it" : "them")} to you.");
         }
     }
 
-    // A rank whose every count is met opens the next; anything else still open on it is beyond the run.
-    private async Task<bool> WaitForNextRank(byte slot, byte rank, string bookName)
+    // A rank whose every count is met opens the next. Targets the run cannot hunt do not hold back the after-run action,
+    // as marks without spawn data do not in a bill run; a target given up does.
+    private async Task<BookEnd?> WaitForNextRank(byte slot, byte rank, string bookName)
     {
         var (killed, needed) = HuntingLogReader.RankProgress(slot, rank);
         if (needed == 0 || killed < needed)
         {
-            Diag($"Run: nothing the run can hunt is left on {bookName} rank {rank + 1} ({killed}/{needed})");
-            return false;
+            Diag($"Run: nothing the run can hunt is left on {bookName} rank {rank + 1} ({killed}/{needed}, {givenUpTargets} target(s) given up)");
+            return givenUpTargets == 0 ? BookEnd.LeftToPlayer : BookEnd.Stalled;
         }
 
         Status = $"Waiting for {bookName} rank {rank + 2} to open";
-        var opened = await WaitUntilTimed(() => RankMoved(slot, rank), RankOpenWaitMs, "hunting-log-rank-open");
-        if (!opened && !CancelToken.IsCancellationRequested)
+        if (await WaitUntilTimed(() => RankMoved(slot, rank), RankOpenWaitMs, "hunting-log-rank-open"))
         {
-            Warn($"Run: {bookName} rank {rank + 1} reads full, but the next rank did not open within {RankOpenWaitMs / TimeUnits.MillisecondsPerSecond}s");
+            return null;
         }
 
-        return opened;
+        if (CancelToken.IsCancellationRequested)
+        {
+            return BookEnd.Stopped;
+        }
+
+        Warn($"Run: {bookName} rank {rank + 1} reads full, but the next rank did not open within {RankOpenWaitMs / TimeUnits.MillisecondsPerSecond}s");
+        return BookEnd.Stalled;
     }
 
     private void WarnIfUnderLevel(byte slot, byte rank, string bookName)
@@ -314,23 +372,32 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
     {
         HuntingLogReader.Refresh(force: true);
         var complete = 0;
+        var finished = 0;
         for (var slotIndex = 0; slotIndex < slots.Count; slotIndex++)
         {
-            if (HuntingLogReader.Status(slots[slotIndex]) == HuntingLogStatus.Complete)
+            var slot = slots[slotIndex];
+            if (HuntingLogReader.Status(slot) == HuntingLogStatus.Complete)
             {
                 complete++;
+                finished++;
+            }
+            else if (RunSession.LogMetStopCondition(slot))
+            {
+                finished++;
             }
         }
 
-        Diag($"Run: finished with {complete} of {slots.Count} log(s) complete");
-        if (complete == slots.Count)
+        Diag($"Run: finished with {complete} of {slots.Count} log(s) complete and {finished - complete} worked as far as the run can go");
+        if (finished < slots.Count)
         {
-            RunSession.CompletedByStopCondition = true;
-            Svc.Chat.Print($"{AhgConstants.LogPrefix} Hunting Log complete: every log you queued is finished.");
+            Svc.Chat.Print($"{AhgConstants.LogPrefix} The Hunting Log run ended with {complete} of {slots.Count} log(s) complete. The plugin log has the details.");
             return;
         }
 
-        Svc.Chat.Print($"{AhgConstants.LogPrefix} The Hunting Log run ended with {complete} of {slots.Count} log(s) complete. The plugin log has the details.");
+        RunSession.CompletedByStopCondition = true;
+        Svc.Chat.Print(complete == slots.Count
+            ? $"{AhgConstants.LogPrefix} Hunting Log complete: every log you queued is finished."
+            : $"{AhgConstants.LogPrefix} Hunting Log complete as far as the run can go: {complete} of {slots.Count} log(s) finished, and the targets left are inside duties, only known from FATEs or without known spawn points.");
     }
 
     private void AnnounceRank(string bookName, byte finishedRank, byte openRank)
@@ -342,14 +409,22 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
     private static void AnnounceComplete(string bookName)
         => Svc.Chat.Print($"{AhgConstants.LogPrefix} The {bookName} Hunting Log is complete.");
 
+    private static string LeftOutReason(SpawnCoverage coverage) => coverage switch
+    {
+        SpawnCoverage.InDuty => "lives inside a duty",
+        SpawnCoverage.FateOnly => "is only known to spawn in FATEs",
+        _ => "has no known spawn points",
+    };
+
+    // Anything but the same rank still in progress ends the wait; the next pass sorts out what it means.
     private static bool RankMoved(byte slot, byte rank)
     {
         HuntingLogReader.Refresh(force: true);
-        return HuntingLogReader.Status(slot) == HuntingLogStatus.Complete || HuntingLogReader.CurrentRank(slot) != rank;
+        return HuntingLogReader.Status(slot) != HuntingLogStatus.InProgress || HuntingLogReader.CurrentRank(slot) != rank;
     }
 
-    // The current zone when the log lists it and it has points, else the first listed zone with points; 0 lets the hunt
-    // choose among every zone the mob is known in.
+    // The current zone when the log lists it and a search can use it, else the first such listed zone; 0 lets the
+    // planner choose among every zone the mob can be found in.
     private static uint TerritoryFor(in HuntingLogTarget target)
     {
         var zones = HuntingLogRegistry.Zones(target);
@@ -358,7 +433,7 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
         for (var zoneIndex = 0; zoneIndex < zones.Length; zoneIndex++)
         {
             var zone = zones[zoneIndex];
-            if (!MobSpawns.TryGet(target.NameId, zone, out _))
+            if (!MobSpawns.TryGetSearchable(target.NameId, zone, out _))
             {
                 continue;
             }

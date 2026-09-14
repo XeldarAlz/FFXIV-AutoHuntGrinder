@@ -6,6 +6,7 @@ using FFXIVClientStructs.FFXIV.Client.Game.Group;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using CSCharacter = FFXIVClientStructs.FFXIV.Client.Game.Character.Character;
+using CSObjectKind = FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind;
 
 namespace AutoHuntGrinder.Core.Kills;
 
@@ -36,6 +37,8 @@ internal sealed unsafe class KillLedger : IDisposable
     private const byte UntaggedType = 0;
     // A party tag may carry the party id in place of a character's id.
     private const byte PartyTagType = 2;
+    // The id the game stores when an object has no owner.
+    private const uint NoOwnerId = 0xE0000000;
 
     private readonly TrackedMob[] watchSlots = new TrackedMob[WatchCapacity];
     private readonly TrackedMob[] interestSlots = new TrackedMob[InterestTrackCapacity];
@@ -48,6 +51,7 @@ internal sealed unsafe class KillLedger : IDisposable
     private int pendingCount;
     private long nextScanAtMs;
     private ulong localPlayerId;
+    private uint localPlayerEntityId;
     private bool huntingLogChangePending;
 
     public KillLedger()
@@ -64,6 +68,7 @@ internal sealed unsafe class KillLedger : IDisposable
     {
         Nobody,
         Us,
+        OurCompanion,
         Others,
     }
 
@@ -212,6 +217,7 @@ internal sealed unsafe class KillLedger : IDisposable
         }
 
         localPlayerId = player.GameObjectId;
+        localPlayerEntityId = player.EntityId;
         for (var objectIndex = 0; objectIndex < objects.Length; objectIndex++)
         {
             if (objects[objectIndex] is not IBattleNpc npc)
@@ -260,7 +266,7 @@ internal sealed unsafe class KillLedger : IDisposable
         if (IsDown(npc))
         {
             slots[index] = default;
-            if (owner == TagOwner.Us || (owner == TagOwner.Nobody && slot.TaggedByUs))
+            if (IsOurs(owner) || (owner == TagOwner.Nobody && slot.TaggedByUs))
             {
                 RecordDeath(gameObjectId, nameId, now);
             }
@@ -274,13 +280,13 @@ internal sealed unsafe class KillLedger : IDisposable
 
         var taggedByUs = owner switch
         {
-            TagOwner.Us => true,
+            TagOwner.Us or TagOwner.OurCompanion => true,
             TagOwner.Others => false,
             _ => slot.TaggedByUs,
         };
         if (taggedByUs != slot.TaggedByUs)
         {
-            Diag($"Kill ledger: BNpcName {nameId}, object {gameObjectId:X}, {(taggedByUs ? "tagged by us" : "tagged by someone else")} (tag type {tagType}, tagger {taggerId:X})");
+            Diag($"Kill ledger: BNpcName {nameId}, object {gameObjectId:X}, {DescribeTag(owner)} (tag type {tagType}, tagger {taggerId:X})");
         }
 
         slots[index] = slot with { SeenAtMs = now, TaggedByUs = taggedByUs };
@@ -289,13 +295,19 @@ internal sealed unsafe class KillLedger : IDisposable
 
     private void TrackIfTaggedByUs(IBattleNpc npc, ulong gameObjectId, uint nameId, long now)
     {
-        if (IsDown(npc) || ReadTag(npc, out var tagType, out var taggerId) != TagOwner.Us)
+        if (IsDown(npc))
+        {
+            return;
+        }
+
+        var owner = ReadTag(npc, out var tagType, out var taggerId);
+        if (!IsOurs(owner))
         {
             return;
         }
 
         interestSlots[ClaimSlot(interestSlots)] = new TrackedMob(gameObjectId, now, now, nameId, true);
-        Diag($"Kill ledger: tracking BNpcName {nameId}, object {gameObjectId:X}, tagged by us (tag type {tagType}, tagger {taggerId:X})");
+        Diag($"Kill ledger: tracking BNpcName {nameId}, object {gameObjectId:X}, {DescribeTag(owner)} (tag type {tagType}, tagger {taggerId:X})");
     }
 
     private TagOwner ReadTag(IBattleNpc npc, out byte tagType, out ulong taggerId)
@@ -308,7 +320,12 @@ internal sealed unsafe class KillLedger : IDisposable
             return TagOwner.Nobody;
         }
 
-        return IsOurTagger(tagType, character->CombatTaggerId) ? TagOwner.Us : TagOwner.Others;
+        if (IsOurTagger(tagType, character->CombatTaggerId))
+        {
+            return TagOwner.Us;
+        }
+
+        return IsOurCompanion(character->CombatTaggerId) ? TagOwner.OurCompanion : TagOwner.Others;
     }
 
     private bool IsOurTagger(byte tagType, GameObjectId taggerId)
@@ -334,6 +351,36 @@ internal sealed unsafe class KillLedger : IDisposable
         }
 
         return InfoProxyCrossRealm.IsCrossRealmParty() && InfoProxyCrossRealm.GetMemberByEntityId(taggerId.ObjectId) != null;
+    }
+
+    // A pet or chocobo that lands the first hit may tag the mob with its own id, and the kill still counts for its owner.
+    private bool IsOurCompanion(GameObjectId taggerId)
+    {
+        var manager = GameObjectManager.Instance();
+        if (manager == null)
+        {
+            return false;
+        }
+
+        var tagger = manager->Objects.GetObjectByGameObjectId(taggerId);
+        if (tagger == null || tagger->ObjectKind is not (CSObjectKind.BattleNpc or CSObjectKind.Companion))
+        {
+            return false;
+        }
+
+        var ownerId = tagger->OwnerId;
+        if (ownerId == 0 || ownerId == NoOwnerId)
+        {
+            return false;
+        }
+
+        if (ownerId == localPlayerEntityId)
+        {
+            return true;
+        }
+
+        var groups = GroupManager.Instance();
+        return groups != null && groups->MainGroup.IsEntityIdInParty(ownerId);
     }
 
     private void RecordDeath(ulong gameObjectId, uint nameId, long now)
@@ -460,6 +507,16 @@ internal sealed unsafe class KillLedger : IDisposable
 
         return false;
     }
+
+    private static bool IsOurs(TagOwner owner) => owner is TagOwner.Us or TagOwner.OurCompanion;
+
+    private static string DescribeTag(TagOwner owner) => owner switch
+    {
+        TagOwner.Us => "tagged by us",
+        TagOwner.OurCompanion => "tagged by our pet or companion",
+        TagOwner.Others => "tagged by someone else",
+        _ => "untagged",
+    };
 
     private static bool IsHuntingLogMessage(uint logMessageId)
         => logMessageId is >= HuntingLogFirstProgressMessageId and <= HuntingLogLastProgressMessageId

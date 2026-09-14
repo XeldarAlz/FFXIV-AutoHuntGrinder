@@ -10,7 +10,7 @@ internal static partial class L
         public static readonly LocString TitleAllDone = new("customList.title.allDone", "Your list is done");
         public static readonly LocString DetailAllDone = new("customList.detail.allDone", "Every mob on your list has its kills. Reset a row to hunt it again.");
         public static readonly LocString TitleBlocked = new("customList.title.blocked", "Nothing to hunt yet");
-        public static readonly LocString DetailBlocked = new("customList.detail.blocked", "Turn on at least one mob in your list.");
+        public static readonly LocString DetailBlocked = new("customList.detail.blocked", "Turn on a mob the run can hunt. A mob marked FATE only is left to you.");
         public static readonly LocString DetailReady = new("customList.detail.ready", "Press Start to hunt every mob on your list until each one has its kills.");
         public static readonly LocString StatusAddMobs = new("customList.status.addMobs", "Add mobs");
 
@@ -20,7 +20,7 @@ internal static partial class L
         public static readonly LocString PlanHint = new("customList.plan.hint", "The mobs you add will appear here.");
         public static readonly LocPlural PlanKillsLeft = new("customList.plan.killsLeft", "{0} kill left across your list", "{0} kills left across your list");
         public static readonly LocString ReasonPick = new("customList.reason.pick", "add at least one mob");
-        public static readonly LocString ReasonBlocked = new("customList.reason.blocked", "turn on at least one mob");
+        public static readonly LocString ReasonBlocked = new("customList.reason.blocked", "turn on a mob the run can hunt");
         public static readonly LocString ReasonAllDone = new("customList.reason.allDone", "every mob on your list is done");
 
         public static readonly LocString SearchHint = new("customList.search.hint", "Search monsters by name");
@@ -28,6 +28,7 @@ internal static partial class L
         public static readonly LocString Add = new("customList.search.add", "Add");
         public static readonly LocString Added = new("customList.search.added", "Added");
         public static readonly LocString ZonesMore = new("customList.search.zonesMore", "{0} +{1} more");
+        public static readonly LocString ZoneFateOnly = new("customList.zoneFateOnly", "{0} (FATE only)");
 
         public static readonly LocPlural Summary = new("customList.summary", "{0} mob  ·  {1} turned on", "{0} mobs  ·  {1} turned on");
         public static readonly LocString ResetAll = new("customList.resetAll", "Reset all");
@@ -36,6 +37,7 @@ internal static partial class L
         public static readonly LocString AnyZone = new("customList.row.anyZone", "Any zone");
         public static readonly LocString NeededFormat = new("customList.row.neededFormat", "%d needed");
         public static readonly LocString EnabledHelp = new("customList.row.enabledHelp", "A mob turned off stays on the list but is skipped.");
+        public static readonly LocString FateOnlyHelp = new("customList.row.fateOnlyHelp", "Known only from FATE spawns here, and the run never fights a FATE's monsters, so it leaves this mob to you.");
         public static readonly LocString Reset = new("customList.row.reset", "Reset the kill count");
         public static readonly LocString Remove = new("customList.row.remove", "Remove from the list");
     }

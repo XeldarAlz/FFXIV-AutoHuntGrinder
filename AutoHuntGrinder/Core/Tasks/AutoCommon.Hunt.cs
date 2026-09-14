@@ -27,6 +27,10 @@ public abstract partial class AutoCommon
     private const int MarkPointSettleMs = 1_500;
     // A sub-area's mobs are spread over it on respawn timers, so the character waits long enough for one to wander into view.
     private const int AreaPointSettleMs = 8_000;
+    // A sub-area label marks where its name is printed, about 140 y from where its mobs were reported on the median, so
+    // the sweep also circles each label at close to that distance.
+    private const float AreaRingRadiusMeters = 120f;
+    private const int AreaRingPoints = 6;
     private const int MaxMarkSightingsPerPoint = 6;
     private const int MaxMarkKnockouts = 3;
     private const int MaxUncountedMarkKills = 3;
@@ -207,18 +211,44 @@ public abstract partial class AutoCommon
     private static MarkHuntContext? CreateQuarryHunt(in HuntObjective objective, string name, string sourceName)
     {
         var territoryId = ObjectivePlanner.TerritoryFor(objective);
-        if (territoryId == 0 || !MobSpawns.TryGet(objective.NameId, territoryId, out var points) || points.Length == 0)
+        if (territoryId == 0 || !MobSpawns.TryGetSearchable(objective.NameId, territoryId, out var points))
         {
             return null;
         }
 
+        var areaPoints = points[0].Kind == SpawnKind.Area;
+        var positions = areaPoints ? AreaSweepPoints(points) : PositionsOf(points);
+        return MarkHuntContext.ForQuarry(objective, name, sourceName, territoryId, positions, areaPoints);
+    }
+
+    private static Vector3[] PositionsOf(ReadOnlySpan<SpawnPoint> points)
+    {
         var positions = new Vector3[points.Length];
         for (var pointIndex = 0; pointIndex < points.Length; pointIndex++)
         {
             positions[pointIndex] = points[pointIndex].Position;
         }
 
-        return MarkHuntContext.ForQuarry(objective, name, sourceName, territoryId, positions, points[0].Kind == SpawnKind.Area);
+        return positions;
+    }
+
+    // Each label, then a ring around it; the ring points keep the label's unknown height, so each is snapped on arrival.
+    private static Vector3[] AreaSweepPoints(ReadOnlySpan<SpawnPoint> labels)
+    {
+        var positions = new Vector3[labels.Length * (AreaRingPoints + 1)];
+        var next = 0;
+        for (var labelIndex = 0; labelIndex < labels.Length; labelIndex++)
+        {
+            var label = labels[labelIndex].Position;
+            positions[next++] = label;
+            for (var step = 0; step < AreaRingPoints; step++)
+            {
+                var angle = MathF.Tau * step / AreaRingPoints;
+                positions[next++] = label + new Vector3(MathF.Cos(angle) * AreaRingRadiusMeters, 0f, MathF.Sin(angle) * AreaRingRadiusMeters);
+            }
+        }
+
+        return positions;
     }
 
     private async Task<MarkOutcome> SearchForMark(MarkHuntContext hunt)
@@ -667,7 +697,6 @@ public abstract partial class AutoCommon
 
         public uint NameId { get; }
 
-        // The bill, log or list the kills count toward.
         public string SourceName { get; }
 
         public int Needed { get; }
@@ -694,7 +723,6 @@ public abstract partial class AutoCommon
 
         public bool Elite { get; }
 
-        // The points mark sub-areas rather than reported spawns.
         public bool AreaPoints { get; }
 
         // FATE mobs and hunt Notorious Monsters, which every elite mark is, credit everyone who fights them; only an

@@ -7,6 +7,9 @@ namespace AutoHuntGrinder.Windows;
 // lambda so no closure is allocated. Keep it in a mutable field or an array slot: a copy caches into itself.
 internal struct CachedText
 {
+    private const int KillsShift = 16;
+    private const long KillsMask = 0xFFFF;
+
     private LanguageInfo? language;
     private long key;
     private string? text;
@@ -33,4 +36,7 @@ internal struct CachedText
 
     public string Get(long key, Func<long, string> build)
         => TryGet(key, out var cached) ? cached : Set(key, build(key));
+
+    public string Kills(int killed, int needed)
+        => Get((killed & KillsMask) << KillsShift | (needed & KillsMask), static key => Loc.T(L.Progress.Kills, (int)(key >> KillsShift), (int)(key & KillsMask)));
 }

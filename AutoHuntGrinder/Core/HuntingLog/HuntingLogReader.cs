@@ -20,7 +20,7 @@ internal static unsafe class HuntingLogReader
     private static readonly byte[] counts = new byte[SlotCount * CountsPerSlot];
 
     private static long refreshedAtTick = -RefreshIntervalMs;
-    private static bool indexMismatchLogged;
+    private static bool recordsRefusedLogged;
 
     public static HuntingLogStatus Status(byte slot) => slot < SlotCount ? statuses[slot] : HuntingLogStatus.Unavailable;
 
@@ -126,7 +126,7 @@ internal static unsafe class HuntingLogReader
 
         refreshedAtTick = now;
         var manager = Svc.ClientState.IsLoggedIn ? MonsterNoteManager.Instance() : null;
-        if (manager == null || !IndexesMatch(manager))
+        if (manager == null || !RecordsUsable(manager))
         {
             MarkAllUnavailable();
             return;
@@ -139,24 +139,69 @@ internal static unsafe class HuntingLogReader
         }
     }
 
-    // Index should repeat the record's own position; anything else means the layout moved, so no record is trusted.
-    private static bool IndexesMatch(MonsterNoteManager* manager)
+    // Index should repeat the record's own position. A record the game never filled reads zero throughout, Index
+    // included, and stands for a log with no progress yet. A filled record with another Index, or no record past the
+    // first carrying its own, means the layout moved or nothing has loaded, so no record is trusted.
+    private static bool RecordsUsable(MonsterNoteManager* manager)
     {
+        var ownIndexSeen = false;
         for (var slot = 0; slot < SlotCount; slot++)
         {
-            var index = manager->RankData[slot].Index;
-            if (index == slot)
+            ref var info = ref manager->RankData[slot];
+            if (info.Index == slot)
             {
+                ownIndexSeen |= slot > 0;
                 continue;
             }
 
-            if (!indexMismatchLogged)
+            if (!IsUnfilled(ref info))
             {
-                indexMismatchLogged = true;
-                Svc.Log.Info($"{AhgConstants.LogPrefix} Hunting Log: rank record {slot} reports Index {index}; treating every log as unavailable until the records line up");
+                return RefuseRecords($"rank record {slot} reports Index {info.Index}");
             }
+        }
 
+        if (!ownIndexSeen)
+        {
+            return RefuseRecords("no rank record past the first carries its own Index");
+        }
+
+        if (recordsRefusedLogged)
+        {
+            recordsRefusedLogged = false;
+            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunting Log: the rank records line up again");
+        }
+
+        return true;
+    }
+
+    private static bool RefuseRecords(string reason)
+    {
+        if (!recordsRefusedLogged)
+        {
+            recordsRefusedLogged = true;
+            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunting Log: {reason}; treating every log as unavailable until the records line up");
+        }
+
+        return false;
+    }
+
+    private static bool IsUnfilled(ref MonsterNoteRankInfo info)
+    {
+        if (info.Index != 0 || info.Rank != 0)
+        {
             return false;
+        }
+
+        for (var entryIndex = 0; entryIndex < EntriesPerRank; entryIndex++)
+        {
+            var entryCounts = info.RankData[entryIndex].Counts;
+            for (var targetSlot = 0; targetSlot < TargetsPerEntry; targetSlot++)
+            {
+                if (entryCounts[targetSlot] != 0)
+                {
+                    return false;
+                }
+            }
         }
 
         return true;

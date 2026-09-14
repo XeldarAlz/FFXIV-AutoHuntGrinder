@@ -33,14 +33,12 @@ internal sealed partial class AutoHuntController
 
     public AutoHuntSession? SessionSnapshot => session;
 
-    // The mode of the run on screen; MarkBills while nothing runs.
     public HuntMode Mode => session?.Mode ?? HuntMode.MarkBills;
 
     public IReadOnlyList<HuntBill> ActiveBills => activeBills;
 
     public IReadOnlyList<byte> ActiveHuntingLogSlots => activeLogSlots;
 
-    // The Hunting Log or custom list pass being worked, in hunting order; empty in a bill run.
     public IReadOnlyList<HuntObjective> Objectives => progress.Objectives;
 
     private static void Diag(string message)
@@ -84,9 +82,8 @@ internal sealed partial class AutoHuntController
 
     public void StartCustomList()
     {
-        var pending = new List<HuntObjective>();
-        CustomMobList.BuildObjectives(pending);
-        if (pending.Count == 0)
+        var pending = CustomMobList.CountNeedingKills();
+        if (pending == 0)
         {
             Diag("Start aborted: no enabled custom mob needs kills.");
             return;
@@ -99,7 +96,7 @@ internal sealed partial class AutoHuntController
 
         activeBills = [];
         activeLogSlots = [];
-        BeginRun(new AutoHuntSession(Plugin.Instance.Configuration.CustomMobs), $"{pending.Count} custom mob(s)");
+        BeginRun(new AutoHuntSession(Plugin.Instance.Configuration.CustomMobs), $"{pending} custom mob(s)");
     }
 
     public void Stop()

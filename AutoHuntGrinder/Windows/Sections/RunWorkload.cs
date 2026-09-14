@@ -4,8 +4,7 @@ using Dalamud.Bindings.ImGui;
 
 namespace AutoHuntGrinder.Windows.Sections;
 
-// The kills a run works toward: the bills it holds, or the targets of its current Hunting Log or custom list pass. The
-// running panel, the header and the mini player all draw it, so it is read once per frame.
+// The running panel, the header and the mini player all draw it, so it is measured once per frame.
 internal static class RunWorkload
 {
     private static int cachedFrame = -1;

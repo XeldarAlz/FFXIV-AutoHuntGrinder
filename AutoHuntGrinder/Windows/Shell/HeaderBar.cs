@@ -191,7 +191,7 @@ internal static class HeaderBar
             return;
         }
 
-        var phase = controller.Paused ? Loc.T(L.Run.PhasePaused) : ReadyState.PhaseLabel(controller.Phase);
+        var phase = controller.Paused ? Loc.T(L.Run.PhasePaused) : ReadyState.PhaseLabel(controller.Phase, controller.Mode);
         var detail = CurrentMark.TryGet(controller, out var mark) ? mark.Line : controller.Status;
         using (Fonts.PushCaption())
         {

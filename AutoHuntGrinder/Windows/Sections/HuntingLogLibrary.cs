@@ -28,15 +28,13 @@ internal static class HuntingLogLibrary
     private const float FooterHeight = 60f;
     private const float CheckButtonHeight = 28f;
     private const float ProgressBarHeight = 3f;
-    private const float BadgePadX = 7f;
     private const float ListSlide = 8f;
     private const byte FollowCurrentRank = byte.MaxValue;
-    private const int KillsShift = 16;
-    private const long KillsMask = 0xFFFF;
+    private const int CountShift = 16;
+    private const long CountMask = 0xFFFF;
     private const int MaxRows = HuntingLogRegistry.EntriesPerRank * HuntingLogRegistry.TargetsPerEntry;
 
     private static readonly byte[] pickerSlots = new byte[HuntingLogRegistry.SlotCount];
-    private static readonly string[] queueNumbers = BuildQueueNumbers(HuntingLogRegistry.SlotCount);
     private static readonly EntryRow[] rows = new EntryRow[MaxRows];
     private static readonly CachedText[] rowKills = new CachedText[MaxRows];
     private static readonly CachedText[] rankLabels = new CachedText[HuntingLogRegistry.MaxRanks];
@@ -61,19 +59,20 @@ internal static class HuntingLogLibrary
     public static void Draw(Configuration configuration, AutoHuntController controller, bool scrollIntoView)
     {
         HuntingLogReader.Refresh();
-        DrawHeader(scrollIntoView);
+        LibraryHeader.Draw(Loc.T(L.HuntingLog.Library), scrollIntoView);
         Styling.VSpace(10f);
 
-        var count = Svc.ClientState.IsLoggedIn ? CollectPicker() : 0;
+        var queue = configuration.HuntingLogQueue;
+        var count = Svc.ClientState.IsLoggedIn ? CollectPicker(queue) : 0;
         if (count == 0)
         {
-            EmptyHint(Loc.T(L.HuntingLog.NotLoggedIn));
+            TextDraw.Hint(Loc.T(L.HuntingLog.NotLoggedIn));
             return;
         }
 
-        EnsureViewSlot(configuration.HuntingLogQueue, count, scrollIntoView);
+        EnsureViewSlot(queue, count, scrollIntoView);
         ImGui.PushID("##ahg_log_picker");
-        DrawPicker(configuration.HuntingLogQueue, count);
+        DrawPicker(queue, count);
         ImGui.PopID();
 
         Styling.VSpace(16f);
@@ -81,26 +80,9 @@ internal static class HuntingLogLibrary
         DrawBook(configuration, controller);
     }
 
-    private static void DrawHeader(bool scrollIntoView)
-    {
-        var scale = ImGuiHelpers.GlobalScale;
-        var origin = ImGui.GetCursorScreenPos();
-        var width = ImGui.GetContentRegionAvail().X;
-        var height = Layout.LibraryHeaderHeight * scale;
-        var label = Loc.T(L.HuntingLog.Library);
-        var labelSize = TextDraw.SectionTitleSize(label);
-        TextDraw.SectionTitle(label, new Vector2(origin.X, origin.Y + (height - labelSize.Y) * 0.5f), Styling.TextStrong);
-
-        ImGui.SetCursorScreenPos(origin);
-        ImGui.Dummy(new Vector2(width, height));
-        if (scrollIntoView)
-        {
-            ImGui.SetScrollHereY(0f);
-        }
-    }
-
-    // The nine class logs, then the player's own company log; another company's log cannot advance.
-    private static int CollectPicker()
+    // The nine class logs, then the player's own company log. Another company's log cannot advance, so it is listed only
+    // while it is still queued, where it can be seen and taken off the queue.
+    private static int CollectPicker(List<byte> queue)
     {
         var count = 0;
         var books = HuntingLogRegistry.Books;
@@ -116,6 +98,15 @@ internal static class HuntingLogLibrary
         if (companySlot != HuntingLogRegistry.NoLog && count < pickerSlots.Length && HuntingLogRegistry.TryGetBook(companySlot, out _))
         {
             pickerSlots[count++] = companySlot;
+        }
+
+        for (var queueIndex = 0; queueIndex < queue.Count && count < pickerSlots.Length; queueIndex++)
+        {
+            var slot = queue[queueIndex];
+            if (PickerIndex(slot, count) < 0 && HuntingLogRegistry.TryGetBook(slot, out _))
+            {
+                pickerSlots[count++] = slot;
+            }
         }
 
         return count;
@@ -166,11 +157,11 @@ internal static class HuntingLogLibrary
     {
         var scale = ImGuiHelpers.GlobalScale;
         var gap = Gap * scale;
-        var avail = ImGui.GetContentRegionAvail().X;
-        var columns = Math.Clamp((int)MathF.Floor((avail + gap) / (ChipMinWidth * scale + gap)), 1, count);
+        var available = ImGui.GetContentRegionAvail().X;
+        var columns = Math.Clamp((int)MathF.Floor((available + gap) / (ChipMinWidth * scale + gap)), 1, count);
         var lines = (count + columns - 1) / columns;
         columns = (count + lines - 1) / lines;
-        var chipWidth = (avail - gap * (columns - 1)) / columns;
+        var chipWidth = (available - gap * (columns - 1)) / columns;
 
         using var itemSpacing = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(gap, gap));
         for (var index = 0; index < count; index++)
@@ -247,8 +238,7 @@ internal static class HuntingLogLibrary
         drawList.AddCircleFilled(center, radius, Paint.Col(Styling.AccentGlow));
         using (Fonts.PushCaption())
         {
-            var label = queueIndex < queueNumbers.Length ? queueNumbers[queueIndex] : string.Empty;
-            TextDraw.Middle(label, center - new Vector2(radius, radius), center + new Vector2(radius, radius), Styling.ForegroundOn(Styling.AccentGlow));
+            TextDraw.Middle(NumberText.Of(queueIndex + 1), center - new Vector2(radius, radius), center + new Vector2(radius, radius), Styling.ForegroundOn(Styling.AccentGlow));
         }
 
         return radius * 2f;
@@ -385,7 +375,7 @@ internal static class HuntingLogLibrary
         }
 
         var (killed, needed) = HuntingLogReader.RankProgress(book.Slot, current);
-        var key = (long)state << 56 | (long)book.Slot << 48 | (long)current << 40 | (long)(killed & KillsMask) << KillsShift | (needed & KillsMask);
+        var key = (long)state << 56 | (long)book.Slot << 48 | (long)current << 40 | (long)(killed & CountMask) << CountShift | (needed & CountMask);
         if (headerCaption.TryGet(key, out var text))
         {
             return text;
@@ -424,7 +414,7 @@ internal static class HuntingLogLibrary
     {
         var scale = ImGuiHelpers.GlobalScale;
         var origin = ImGui.GetCursorScreenPos();
-        var avail = ImGui.GetContentRegionAvail().X;
+        var available = ImGui.GetContentRegionAvail().X;
         var height = RankPillHeight * scale;
         var gap = Gap * scale;
         var x = origin.X;
@@ -444,7 +434,7 @@ internal static class HuntingLogLibrary
             var iconSize = TextDraw.IconSize(icon);
             var labelSize = TextDraw.Measure(label);
             var width = RankPillPadX * 2f * scale + iconSize.X + 6f * scale + labelSize.X;
-            if (x > origin.X && x + width > origin.X + avail)
+            if (x > origin.X && x + width > origin.X + available)
             {
                 x = origin.X;
                 y += height + gap;
@@ -471,7 +461,7 @@ internal static class HuntingLogLibrary
         }
 
         ImGui.SetCursorScreenPos(origin);
-        ImGui.Dummy(new Vector2(avail, y + height - origin.Y));
+        ImGui.Dummy(new Vector2(available, y + height - origin.Y));
     }
 
     private static void DrawRankPill(Vector2 origin, Vector2 size, RankState state, bool shown, float hover, FontAwesomeIcon icon, Vector2 iconSize, string label, Vector2 labelSize)
@@ -541,15 +531,15 @@ internal static class HuntingLogLibrary
         EnsureRows(slot, rank);
         if (rowCount == 0)
         {
-            EmptyHint(Loc.T(L.HuntingLog.NoTargets));
+            TextDraw.Hint(Loc.T(L.HuntingLog.NoTargets));
             return;
         }
 
         var scale = ImGuiHelpers.GlobalScale;
         var gap = Gap * scale;
-        var avail = ImGui.GetContentRegionAvail().X;
-        var columns = Math.Max(1, (int)MathF.Floor((avail + gap) / (EntryMinWidth * scale + gap)));
-        var rowWidth = (avail - gap * (columns - 1)) / columns;
+        var available = ImGui.GetContentRegionAvail().X;
+        var columns = Math.Max(1, (int)MathF.Floor((available + gap) / (EntryMinWidth * scale + gap)));
+        var rowWidth = (available - gap * (columns - 1)) / columns;
 
         using var itemSpacing = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(gap, gap));
         for (var index = 0; index < rowCount; index++)
@@ -586,7 +576,7 @@ internal static class HuntingLogLibrary
                 var target = targets[targetOffset];
                 var targetIndex = entry.FirstTarget + targetOffset;
                 rows[rowCount++] = new EntryRow(entry.EntryIndex, target, HuntingLogRegistry.TargetName(targetIndex), ZoneLine(target),
-                    HuntLauncher.Coverage(targetIndex, target));
+                    HuntingLogCoverage.Of(targetIndex, target));
             }
         }
     }
@@ -610,7 +600,7 @@ internal static class HuntingLogLibrary
         var target = row.Target;
         var killed = Math.Min(HuntingLogReader.Killed(slot, rank, row.EntryIndex, target.TargetSlot), target.Needed);
         var done = killed >= target.Needed;
-        var huntable = HuntLauncher.IsHuntable(row.Coverage);
+        var huntable = HuntingLogCoverage.IsHuntable(row.Coverage);
 
         var scale = ImGuiHelpers.GlobalScale;
         var size = new Vector2(width, EntryRowHeight * scale);
@@ -626,6 +616,7 @@ internal static class HuntingLogLibrary
         var top = origin.Y + 9f * scale;
         var (icon, iconColor) = done ? (FontAwesomeIcon.Check, Styling.AccentMint)
             : row.Coverage == SpawnCoverage.InDuty ? (FontAwesomeIcon.DoorClosed, Styling.TextMuted)
+            : row.Coverage == SpawnCoverage.FateOnly ? (FontAwesomeIcon.Flag, Styling.TextMuted)
             : row.Coverage == SpawnCoverage.NoData ? (FontAwesomeIcon.QuestionCircle, Styling.TextMuted)
             : (FontAwesomeIcon.Crosshairs, Styling.TextDim);
         var iconSize = TextDraw.IconSize(icon);
@@ -633,8 +624,7 @@ internal static class HuntingLogLibrary
         var textX = origin.X + padX + TextDraw.IconSize(FontAwesomeIcon.Crosshairs).X + 10f * scale;
         var rightX = end.X - padX;
 
-        var kills = rowKills[index].Get((long)killed << KillsShift | target.Needed,
-            static key => Loc.T(L.Progress.Kills, (int)(key >> KillsShift), (int)(key & KillsMask)));
+        var kills = rowKills[index].Kills(killed, target.Needed);
         float captionHeight;
         using (Fonts.PushCaption())
         {
@@ -653,7 +643,7 @@ internal static class HuntingLogLibrary
         var badge = BadgeFor(row.Coverage);
         if (badge.Length > 0)
         {
-            zoneRight -= DrawBadge(drawList, badge, BadgeColor(row.Coverage), rightX, captionY + captionHeight * 0.5f) + 8f * scale;
+            zoneRight -= Badge.Draw(drawList, badge, BadgeColor(row.Coverage), rightX, captionY + captionHeight * 0.5f) + 8f * scale;
         }
 
         using (Fonts.PushCaption())
@@ -677,6 +667,7 @@ internal static class HuntingLogLibrary
     {
         SpawnCoverage.InDuty => Loc.T(L.HuntingLog.BadgeInDuty),
         SpawnCoverage.AreaOnly => Loc.T(L.HuntingLog.BadgeAreaOnly),
+        SpawnCoverage.FateOnly => Loc.T(L.HuntingLog.BadgeFateOnly),
         SpawnCoverage.NoData => Loc.T(L.HuntingLog.BadgeNoSpawns),
         _ => string.Empty,
     };
@@ -685,6 +676,7 @@ internal static class HuntingLogLibrary
     {
         SpawnCoverage.InDuty => Styling.AccentAmber,
         SpawnCoverage.AreaOnly => Styling.AccentBlue,
+        SpawnCoverage.FateOnly => Styling.AccentNebula,
         _ => Styling.AccentRose,
     };
 
@@ -692,24 +684,9 @@ internal static class HuntingLogLibrary
     {
         SpawnCoverage.InDuty => Loc.T(L.HuntingLog.InDutyHelp),
         SpawnCoverage.AreaOnly => Loc.T(L.HuntingLog.AreaOnlyHelp),
+        SpawnCoverage.FateOnly => Loc.T(L.HuntingLog.FateOnlyHelp),
         _ => Loc.T(L.HuntingLog.NoSpawnsHelp),
     };
-
-    private static float DrawBadge(ImDrawListPtr drawList, string label, Vector4 color, float rightX, float midY)
-    {
-        var scale = ImGuiHelpers.GlobalScale;
-        using (Fonts.PushCaption())
-        {
-            var labelSize = TextDraw.Measure(label);
-            var padX = BadgePadX * scale;
-            var padY = 2f * scale;
-            var min = new Vector2(rightX - labelSize.X - padX * 2f, midY - labelSize.Y * 0.5f - padY);
-            var max = new Vector2(rightX, midY + labelSize.Y * 0.5f + padY);
-            Paint.Pill(drawList, min, max, Styling.WithAlpha(color, 0.16f), Styling.WithAlpha(color, 0.50f));
-            TextDraw.At(label, new Vector2(min.X + padX, midY - labelSize.Y * 0.5f), Styling.Lighten(color, 0.25f));
-            return max.X - min.X;
-        }
-    }
 
     private static void DrawFooter(in HuntingLogBook book)
     {
@@ -806,23 +783,5 @@ internal static class HuntingLogLibrary
             : Svc.Data.GetExcelSheet<Achievement>().GetRowOrDefault(achievementId)?.Name.ExtractText() ?? string.Empty;
         achievementNames[slot] = name;
         return name;
-    }
-
-    private static void EmptyHint(string text)
-    {
-        var origin = ImGui.GetCursorScreenPos();
-        TextDraw.At(text, origin, Styling.TextMuted);
-        ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetTextLineHeight()));
-    }
-
-    private static string[] BuildQueueNumbers(int count)
-    {
-        var numbers = new string[count];
-        for (var index = 0; index < count; index++)
-        {
-            numbers[index] = (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        return numbers;
     }
 }

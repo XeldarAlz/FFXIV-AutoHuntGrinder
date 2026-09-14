@@ -5,8 +5,6 @@ using System.Threading.Tasks;
 
 namespace AutoHuntGrinder.Core.Tasks;
 
-// Hunts every enabled mob on the custom list until each reaches its count. The game keeps no counter for these, so the
-// kill ledger credits the list while the run lasts, and each pass plans again from what the list still needs.
 internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progress) : AutoObjectiveHunt(session, progress)
 {
     private const int MaxCustomPasses = 10;
@@ -96,7 +94,7 @@ internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progr
             }
 
             objectives.RemoveAt(objectiveIndex);
-            var reason = objective.TerritoryId != 0 ? "has no known spawn points in its pinned zone" : "has no known spawn points";
+            var reason = objective.TerritoryId != 0 ? "has no known spawn points outside FATEs in its pinned zone" : "has no known spawn points outside FATEs";
             if (NoteLeftOut(objective, reason))
             {
                 leftOutNames.Add(ObjectiveProgress.Name(objective));
@@ -132,28 +130,47 @@ internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progr
             return;
         }
 
-        Svc.Chat.Print($"{AhgConstants.LogPrefix} No spawn points are known for {string.Join(", ", leftOutNames)}, so the run leaves {(leftOutNames.Count == 1 ? "it" : "them")} to you.");
+        Svc.Chat.Print($"{AhgConstants.LogPrefix} No spawn points outside FATEs are known for {string.Join(", ", leftOutNames)}, so the run leaves {(leftOutNames.Count == 1 ? "it" : "them")} to you.");
     }
 
+    // Mobs the run cannot hunt do not hold back the after-run action, as marks without spawn data do not in a bill run;
+    // a mob given up does.
     private void Finish()
     {
         CustomMobList.BuildObjectives(objectives);
-        if (objectives.Count == 0)
+        leftOutNames.Clear();
+        var kills = 0;
+        var huntable = 0;
+        for (var objectiveIndex = 0; objectiveIndex < objectives.Count; objectiveIndex++)
+        {
+            var objective = objectives[objectiveIndex];
+            kills += objective.Remaining;
+            if (ObjectivePlanner.CanHunt(objective))
+            {
+                huntable++;
+                continue;
+            }
+
+            leftOutNames.Add(ObjectiveProgress.Name(objective));
+        }
+
+        if (huntable > 0)
+        {
+            Diag($"Run: finished with {kills} kill(s) left on {objectives.Count} custom mob(s), {huntable} of them huntable");
+            Svc.Chat.Print($"{AhgConstants.LogPrefix} Hunt ended with {kills} kill(s) left on {objectives.Count} mob(s). The log has the details.");
+            return;
+        }
+
+        RunSession.CompletedByStopCondition = true;
+        if (leftOutNames.Count == 0)
         {
             Diag("Run: every mob on the custom list reached its count");
-            RunSession.CompletedByStopCondition = true;
             Svc.Chat.Print($"{AhgConstants.LogPrefix} Custom list complete: every mob on it reached its count.");
             return;
         }
 
-        var kills = 0;
-        for (var objectiveIndex = 0; objectiveIndex < objectives.Count; objectiveIndex++)
-        {
-            kills += objectives[objectiveIndex].Remaining;
-        }
-
-        Diag($"Run: finished with {kills} kill(s) left on {objectives.Count} custom mob(s)");
-        Svc.Chat.Print($"{AhgConstants.LogPrefix} Hunt ended with {kills} kill(s) left on {objectives.Count} mob(s). The log has the details.");
+        Diag($"Run: every mob the run can hunt reached its count; {leftOutNames.Count} left to the player");
+        Svc.Chat.Print($"{AhgConstants.LogPrefix} Custom list complete as far as the run can go. Left for you, with no spawn points outside FATEs: {string.Join(", ", leftOutNames)}.");
     }
 
     private void EndTracking()

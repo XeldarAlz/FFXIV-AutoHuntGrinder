@@ -29,7 +29,7 @@ internal static class BillLibrary
 
     public static void Draw(Configuration configuration, AutoHuntController controller, bool scrollIntoView)
     {
-        DrawHeader(scrollIntoView);
+        LibraryHeader.Draw(Loc.T(L.Hunt.Bills), scrollIntoView);
         Styling.VSpace(10f);
         DrawExpansionPicker();
 
@@ -37,7 +37,7 @@ internal static class BillLibrary
         Collect(expansions[currentExpansion]);
         if (dailyBills.Count + weeklyBills.Count == 0)
         {
-            EmptyHint(Loc.T(L.Hunt.NoBillsInData));
+            TextDraw.Hint(Loc.T(L.Hunt.NoBillsInData));
             return;
         }
 
@@ -71,24 +71,6 @@ internal static class BillLibrary
             }
 
             dailyBills.Add(bill);
-        }
-    }
-
-    private static void DrawHeader(bool scrollIntoView)
-    {
-        var scale = ImGuiHelpers.GlobalScale;
-        var origin = ImGui.GetCursorScreenPos();
-        var width = ImGui.GetContentRegionAvail().X;
-        var height = Layout.LibraryHeaderHeight * scale;
-        var label = Loc.T(L.Hunt.Bills);
-        var labelSize = TextDraw.SectionTitleSize(label);
-        TextDraw.SectionTitle(label, new Vector2(origin.X, origin.Y + (height - labelSize.Y) * 0.5f), Styling.TextStrong);
-
-        ImGui.SetCursorScreenPos(origin);
-        ImGui.Dummy(new Vector2(width, height));
-        if (scrollIntoView)
-        {
-            ImGui.SetScrollHereY(0f);
         }
     }
 
@@ -339,13 +321,6 @@ internal static class BillLibrary
         => bill.UnlockQuestName.Length > 0
             ? Loc.T(L.Hunt.LockedQuest, bill.UnlockQuestName)
             : Loc.T(L.Hunt.LockedRank);
-
-    private static void EmptyHint(string text)
-    {
-        var origin = ImGui.GetCursorScreenPos();
-        TextDraw.At(text, origin, Styling.TextMuted);
-        ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetTextLineHeight()));
-    }
 
     private static int CountSelected(Configuration configuration, List<HuntBill> bills)
     {

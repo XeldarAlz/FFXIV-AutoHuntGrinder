@@ -25,7 +25,6 @@ internal sealed class HuntProgress
 
     public HuntObjective Objective { get; private set; }
 
-    // The Hunting Log or custom list pass being worked, in hunting order; Killed and Needed are refreshed after each hunt.
     public IReadOnlyList<HuntObjective> Objectives => objectives;
 
     public ReadOnlySpan<HuntObjective> ObjectivesAhead => objectives.AsSpan(Math.Min(objectiveNext, objectives.Length));

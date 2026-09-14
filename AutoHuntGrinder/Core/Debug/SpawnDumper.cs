@@ -29,14 +29,14 @@ internal static class SpawnDumper
         ReportMapRoundTrip(position);
         if (MobSpawns.TryGet(nameId, territoryId, out var points))
         {
-            ReportNearest(points, position);
+            ReportNearest(points, position, MobSpawns.IsFateOnly(nameId, territoryId));
             return;
         }
 
         ReportOtherZones(nameId);
     }
 
-    private static void ReportNearest(ReadOnlySpan<SpawnPoint> points, Vector3 position)
+    private static void ReportNearest(ReadOnlySpan<SpawnPoint> points, Vector3 position, bool fateOnly)
     {
         var nearestIndex = 0;
         var nearestDistance = float.MaxValue;
@@ -54,8 +54,9 @@ internal static class SpawnDumper
 
         var nearest = points[nearestIndex].Position;
         var height = float.IsNaN(nearest.Y) ? "unknown" : FormattableString.Invariant($"{nearest.Y - position.Y:+0.0;-0.0} y");
+        var source = fateOnly ? ", known only from FATEs, so a run skips them" : string.Empty;
         Report(FormattableString.Invariant(
-            $"Spawns: the table has {points.Length} {points[nearestIndex].Kind} point(s) here; the nearest, #{nearestIndex + 1} at ({nearest.X:0}, {nearest.Z:0}), is {nearestDistance:0.0} y from the target on the ground, height hint {height}"));
+            $"Spawns: the table has {points.Length} {points[nearestIndex].Kind} point(s) here{source}; the nearest, #{nearestIndex + 1} at ({nearest.X:0}, {nearest.Z:0}), is {nearestDistance:0.0} y from the target on the ground, height hint {height}"));
     }
 
     private static void ReportOtherZones(uint nameId)

@@ -99,14 +99,6 @@ internal static class ObjectiveProgress
             return entries[listIndex];
         }
 
-        for (var index = 0; index < entries.Count; index++)
-        {
-            if (entries[index].NameId == objective.NameId)
-            {
-                return entries[index];
-            }
-        }
-
-        return null;
+        return CustomMobList.Find(objective.NameId);
     }
 }

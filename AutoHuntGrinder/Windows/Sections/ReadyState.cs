@@ -42,7 +42,8 @@ internal static class ReadyState
                 return new Info(Kind.Paused, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.Pause, Loc.T(L.Hunt.TitlePaused), detail);
             }
 
-            return new Info(Kind.Running, Styling.AccentBlue, Styling.AccentBlueSoft, FontAwesomeIcon.Crosshairs, Loc.T(L.Hunt.TitleRunning), PhaseLabel(controller.Phase));
+            return new Info(Kind.Running, Styling.AccentBlue, Styling.AccentBlueSoft, FontAwesomeIcon.Crosshairs, Loc.T(L.Hunt.TitleRunning),
+                PhaseLabel(controller.Phase, controller.Mode));
         }
 
         if (!ExternalPlugins.AllRequiredInstalled())
@@ -110,9 +111,9 @@ internal static class ReadyState
         _                  => Loc.T(L.Shell.StatusIdle),
     };
 
-    public static string PhaseLabel(HuntPhase phase) => phase switch
+    public static string PhaseLabel(HuntPhase phase, HuntMode mode) => phase switch
     {
-        HuntPhase.Reading    => Loc.T(L.Run.PhaseReading),
+        HuntPhase.Reading    => Loc.T(ReadingLabel(mode)),
         HuntPhase.PickingUp  => Loc.T(L.Run.PhasePickingUp),
         HuntPhase.Travelling => Loc.T(L.Run.PhaseTravelling),
         HuntPhase.Searching  => Loc.T(L.Run.PhaseSearching),
@@ -130,4 +131,11 @@ internal static class ReadyState
             : Loc.Plural(L.Hunt.KillsLeft, workload.KillsLeft);
         return Loc.T(L.Hunt.StartSub, Loc.Plural(L.Hunt.BillsCount, bills.Count), detail);
     }
+
+    private static LocString ReadingLabel(HuntMode mode) => mode switch
+    {
+        HuntMode.HuntingLog => L.Run.PhaseReadingLogs,
+        HuntMode.CustomList => L.Run.PhaseReadingList,
+        _                   => L.Run.PhaseReading,
+    };
 }

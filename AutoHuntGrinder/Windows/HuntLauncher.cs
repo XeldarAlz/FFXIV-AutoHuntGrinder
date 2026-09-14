@@ -1,22 +1,14 @@
+using AutoHuntGrinder.Core.Custom;
 using AutoHuntGrinder.Core.Game.Ops;
 using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
-using AutoHuntGrinder.Core.Spawns;
 using AutoHuntGrinder.Windows.Sections;
 using Dalamud.Bindings.ImGui;
 using ECommons.DalamudServices;
 using System.Numerics;
 
 namespace AutoHuntGrinder.Windows;
-
-internal enum SpawnCoverage : byte
-{
-    Points,
-    AreaOnly,
-    InDuty,
-    NoData,
-}
 
 internal enum BookState : byte
 {
@@ -27,8 +19,6 @@ internal enum BookState : byte
     Complete,
 }
 
-// Decides, per mode, what a press of Start would hunt, so the ready state, the plan card, the dock and the libraries
-// all read the same answer.
 internal static class HuntLauncher
 {
     public enum Readiness : byte
@@ -41,11 +31,10 @@ internal static class HuntLauncher
 
     // Picked counts what the plan covers: selected bills, queued logs or enabled mobs. FirstSlot is the first queued log
     // that can advance, or HuntingLogRegistry.NoLog.
-    public readonly record struct Plan(HuntMode Mode, Readiness Readiness, int Picked, int Workable, int KillsLeft, byte FirstSlot);
+    public readonly record struct Plan(HuntMode Mode, Readiness Readiness, int Picked, int KillsLeft, byte FirstSlot);
 
     // Finding a gearset walks the whole gearset list, so the answer is reused for this long.
     private const long GearsetRefreshMs = 1_000;
-    private const byte UnresolvedCoverage = 0;
     private const int RankBits = 8;
     private const long ByteMask = 0xFF;
     private const long CountMask = 0xFFFFFF;
@@ -54,7 +43,6 @@ internal static class HuntLauncher
     private static readonly CachedText[] bookLabelTexts = new CachedText[HuntingLogRegistry.SlotCount];
     private static readonly CachedText[] bookStatusTexts = new CachedText[HuntingLogRegistry.SlotCount];
 
-    private static byte[]? coverageByTarget;
     private static long gearsetCheckedAtTick = -GearsetRefreshMs;
     private static int cachedFrame = -1;
     private static HuntMode cachedMode;
@@ -266,34 +254,12 @@ internal static class HuntLauncher
         return gearsetBySlot[slot];
     }
 
-    // targetIndex counts through the registry's whole target table (entry.FirstTarget plus the offset in the entry).
-    // Spawn data never changes, so each target is looked up once.
-    public static SpawnCoverage Coverage(int targetIndex, in HuntingLogTarget target)
-    {
-        var table = coverageByTarget ??= new byte[TargetTableSize()];
-        if ((uint)targetIndex >= (uint)table.Length)
-        {
-            return Classify(target);
-        }
-
-        var stored = table[targetIndex];
-        if (stored == UnresolvedCoverage)
-        {
-            stored = (byte)(Classify(target) + 1);
-            table[targetIndex] = stored;
-        }
-
-        return (SpawnCoverage)(stored - 1);
-    }
-
-    public static bool IsHuntable(SpawnCoverage coverage) => coverage is SpawnCoverage.Points or SpawnCoverage.AreaOnly;
-
     private static Plan AssessBills(Configuration configuration)
     {
         var picked = BillSelection.CountSelected(configuration);
         var workable = BillSelection.ResolveStartList(configuration).Count;
         var readiness = picked == 0 ? Readiness.NothingPicked : workable == 0 ? Readiness.AllDone : Readiness.Ready;
-        return new Plan(HuntMode.MarkBills, readiness, picked, workable, 0, HuntingLogRegistry.NoLog);
+        return new Plan(HuntMode.MarkBills, readiness, picked, 0, HuntingLogRegistry.NoLog);
     }
 
     private static Plan AssessLogs(List<byte> queue)
@@ -331,12 +297,14 @@ internal static class HuntLauncher
             : workable > 0 ? Readiness.Ready
             : complete == queue.Count ? Readiness.AllDone
             : Readiness.Blocked;
-        return new Plan(HuntMode.HuntingLog, readiness, queue.Count, workable, killsLeft, firstSlot);
+        return new Plan(HuntMode.HuntingLog, readiness, queue.Count, killsLeft, firstSlot);
     }
 
+    // Only mobs the run can hunt make a start worthwhile, as in the run itself; one known only from FATEs is left to you.
     private static Plan AssessCustom(List<CustomMobEntry> entries)
     {
         var enabled = 0;
+        var needingKills = 0;
         var workable = 0;
         var killsLeft = 0;
         for (var index = 0; index < entries.Count; index++)
@@ -348,7 +316,13 @@ internal static class HuntLauncher
             }
 
             enabled++;
-            if (entry.Killed >= entry.Needed)
+            if (!CustomMobList.NeedsKills(entry))
+            {
+                continue;
+            }
+
+            needingKills++;
+            if (!CustomMobList.CanHunt(entry))
             {
                 continue;
             }
@@ -359,9 +333,9 @@ internal static class HuntLauncher
 
         var readiness = entries.Count == 0 ? Readiness.NothingPicked
             : workable > 0 ? Readiness.Ready
-            : enabled > 0 ? Readiness.AllDone
+            : enabled > 0 && needingKills == 0 ? Readiness.AllDone
             : Readiness.Blocked;
-        return new Plan(HuntMode.CustomList, readiness, enabled, workable, killsLeft, HuntingLogRegistry.NoLog);
+        return new Plan(HuntMode.CustomList, readiness, enabled, killsLeft, HuntingLogRegistry.NoLog);
     }
 
     // A class log advances only on its class, which the run reaches through a gearset unless the player is on it now.
@@ -379,7 +353,7 @@ internal static class HuntLauncher
             for (var targetOffset = 0; targetOffset < targets.Length; targetOffset++)
             {
                 var target = targets[targetOffset];
-                if (!IsHuntable(Coverage(entry.FirstTarget + targetOffset, target)))
+                if (!HuntingLogCoverage.IsHuntable(HuntingLogCoverage.Of(entry.FirstTarget + targetOffset, target)))
                 {
                     continue;
                 }
@@ -412,62 +386,4 @@ internal static class HuntLauncher
     private static long PlanKey(in Plan plan, byte rank, int count)
         => (long)plan.Readiness << 58 | (long)plan.Mode << 56 | (long)rank << 48 | (long)plan.FirstSlot << 40
         | (long)(ushort)plan.Picked << 24 | (count & CountMask);
-
-    private static SpawnCoverage Classify(in HuntingLogTarget target)
-    {
-        if (target.InDuty)
-        {
-            return SpawnCoverage.InDuty;
-        }
-
-        var zones = HuntingLogRegistry.Zones(target);
-        var areaFound = false;
-        for (var index = 0; index < zones.Length; index++)
-        {
-            if (!MobSpawns.TryGet(target.NameId, zones[index], out var points) || points.Length == 0)
-            {
-                continue;
-            }
-
-            if (points[0].Kind == SpawnKind.Point)
-            {
-                return SpawnCoverage.Points;
-            }
-
-            areaFound = true;
-        }
-
-        if (areaFound)
-        {
-            return SpawnCoverage.AreaOnly;
-        }
-
-        var territories = MobSpawns.Territories(target.NameId);
-        if (territories.Length == 0 || !MobSpawns.TryGet(target.NameId, territories[0], out var fallback) || fallback.Length == 0)
-        {
-            return SpawnCoverage.NoData;
-        }
-
-        return fallback[0].Kind == SpawnKind.Point ? SpawnCoverage.Points : SpawnCoverage.AreaOnly;
-    }
-
-    private static int TargetTableSize()
-    {
-        var size = 0;
-        var books = HuntingLogRegistry.Books;
-        for (var bookIndex = 0; bookIndex < books.Length; bookIndex++)
-        {
-            var book = books[bookIndex];
-            for (byte rank = 0; rank < book.RankCount; rank++)
-            {
-                var entries = HuntingLogRegistry.Rank(book.Slot, rank);
-                for (var entryIndex = 0; entryIndex < entries.Length; entryIndex++)
-                {
-                    size = Math.Max(size, entries[entryIndex].FirstTarget + entries[entryIndex].TargetCount);
-                }
-            }
-        }
-
-        return size;
-    }
 }

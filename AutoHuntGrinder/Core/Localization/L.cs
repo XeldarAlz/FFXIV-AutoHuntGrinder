@@ -59,6 +59,7 @@ internal static partial class L
         public static readonly LocString StatsAppearHere = new("hunt.statsAppearHere", "your stats will appear here");
         public static readonly LocString LastRun = new("hunt.lastRun", "Last run  ·  {0} marks");
         public static readonly LocString LastRunDetail = new("hunt.lastRunDetail", "{0}  ·  {1} bills");
+        public static readonly LocString LastRunKills = new("hunt.lastRunKills", "Last run  ·  {0} kills");
 
         public static readonly LocString Plan = new("hunt.plan", "Plan");
         public static readonly LocString SentenceHunt = new("hunt.sentence.hunt", "Hunt");
@@ -125,6 +126,8 @@ internal static partial class L
     internal static class Run
     {
         public static readonly LocString PhaseReading = new("run.phase.reading", "Reading bills");
+        public static readonly LocString PhaseReadingLogs = new("run.phase.readingLogs", "Reading your logs");
+        public static readonly LocString PhaseReadingList = new("run.phase.readingList", "Reading your list");
         public static readonly LocString PhasePickingUp = new("run.phase.pickingUp", "Picking up bills");
         public static readonly LocString PhaseTravelling = new("run.phase.travelling", "Travelling");
         public static readonly LocString PhaseSearching = new("run.phase.searching", "Searching");
@@ -165,6 +168,7 @@ internal static partial class L
         public static readonly LocString TileRuns = new("history.tile.runs", "Runs");
         public static readonly LocString TileBills = new("history.tile.bills", "Bills");
         public static readonly LocString TileMarks = new("history.tile.marks", "Marks");
+        public static readonly LocString TileKills = new("history.tile.kills", "Kills");
         public static readonly LocString TileSeals = new("history.tile.seals", "Seals");
         public static readonly LocString TileNuts = new("history.tile.nuts", "Nuts");
         public static readonly LocString NoRuns = new("history.noRuns", "No runs recorded yet. Finish (or stop) a hunt and it'll show up here.");
@@ -173,8 +177,10 @@ internal static partial class L
         public static readonly LocPlural ChartRange = new("history.chartRange", "last {0} run  ·  oldest to newest", "last {0} runs  ·  oldest to newest");
         public static readonly LocString ChartPeak = new("history.chartPeak", "peak {0}");
         public static readonly LocString ChartTooltip = new("history.chartTooltip", "{0}  ·  {1} marks  ·  {2} bills  ·  {3}");
+        public static readonly LocString ChartTooltipKills = new("history.chartTooltipKills", "{0}  ·  {1} kills  ·  {2}");
         public static readonly LocString RowDetail = new("history.rowDetail", "{0}  ·  {1}  ·  {2}");
         public static readonly LocString TooltipRate = new("history.tooltip.rate", "Rate: {0} marks/h");
+        public static readonly LocString TooltipRateKills = new("history.tooltip.rateKills", "Rate: {0} kills/h");
         public static readonly LocString TooltipBills = new("history.tooltip.bills", "Bills: {0}");
         public static readonly LocString TooltipLogs = new("history.tooltip.logs", "Logs: {0}");
         public static readonly LocString TooltipMobs = new("history.tooltip.mobs", "Mobs: {0}");

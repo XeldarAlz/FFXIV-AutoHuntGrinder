@@ -31,9 +31,9 @@ internal static class PlanCard
     private const string AfterPopup = "##ahg_after_popover";
     private const string QueuePopup = "##ahg_queue_popover";
     private const string AfterTokenId = "##ahg_token_after";
+    private const string OrdinalMark = ".";
 
     private static readonly string[] subjectTokenIds = ["##ahg_token_bills", "##ahg_token_logs", "##ahg_token_mobs"];
-    private static readonly string[] ordinals = BuildOrdinals(HuntingLogRegistry.SlotCount);
 
     private static readonly AfterRunAction[] afterRunOrder =
         [AfterRunAction.StayLoggedIn, AfterRunAction.ReturnToInn, AfterRunAction.Logout, AfterRunAction.CloseGame];
@@ -431,12 +431,15 @@ internal static class PlanCard
 
         Paint.Fill(drawList, origin, end, Styling.WithAlpha(Styling.Surface2, 0.55f), 8f * scale);
 
-        var ordinal = index < ordinals.Length ? ordinals[index] : string.Empty;
-        var ordinalSize = TextDraw.Measure(ordinal);
-        TextDraw.At(ordinal, new Vector2(origin.X + padX, midY - ordinalSize.Y * 0.5f), Styling.TextDim);
+        var number = NumberText.Of(index + 1);
+        var numberSize = TextDraw.Measure(number);
+        var numberY = midY - numberSize.Y * 0.5f;
+        TextDraw.At(number, new Vector2(origin.X + padX, numberY), Styling.TextDim);
+        TextDraw.At(OrdinalMark, new Vector2(origin.X + padX + numberSize.X, numberY), Styling.TextDim);
 
         var buttonsLeft = end.X - padX - button * 3f - buttonGap * 2f;
-        var textX = origin.X + padX + TextDraw.Measure(ordinals[^1]).X + 10f * scale;
+        var widestNumber = TextDraw.Measure(NumberText.Of(HuntingLogRegistry.SlotCount)).X + TextDraw.Measure(OrdinalMark).X;
+        var textX = origin.X + padX + widestNumber + 10f * scale;
         var textWidth = buttonsLeft - 10f * scale - textX;
         var state = HuntLauncher.StateOf(slot);
         var lineHeight = ImGui.GetTextLineHeight();
@@ -503,16 +506,5 @@ internal static class PlanCard
         }
 
         configuration.Save();
-    }
-
-    private static string[] BuildOrdinals(int count)
-    {
-        var built = new string[count];
-        for (var index = 0; index < count; index++)
-        {
-            built[index] = $"{index + 1}.";
-        }
-
-        return built;
     }
 }

@@ -34,8 +34,6 @@ internal static class CustomListEditor
     private const float ProgressBarHeight = 3f;
     private const int MinNeeded = 1;
     private const int MaxNeeded = 999;
-    private const int KillsShift = 16;
-    private const long KillsMask = 0xFFFF;
     private const int CountShift = 32;
     private const long CountMask = 0xFFFFFFFF;
 
@@ -61,31 +59,13 @@ internal static class CustomListEditor
     public static void Draw(Configuration configuration, AutoHuntController controller, bool scrollIntoView)
     {
         var running = controller.Running;
-        DrawHeader(scrollIntoView);
+        LibraryHeader.Draw(Loc.T(L.CustomList.Library), scrollIntoView);
         Styling.VSpace(10f);
         DrawSearch();
         DrawResults(running);
 
         Styling.VSpace(14f);
         DrawEntries(configuration, running);
-    }
-
-    private static void DrawHeader(bool scrollIntoView)
-    {
-        var scale = ImGuiHelpers.GlobalScale;
-        var origin = ImGui.GetCursorScreenPos();
-        var width = ImGui.GetContentRegionAvail().X;
-        var height = Layout.LibraryHeaderHeight * scale;
-        var label = Loc.T(L.CustomList.Library);
-        var labelSize = TextDraw.SectionTitleSize(label);
-        TextDraw.SectionTitle(label, new Vector2(origin.X, origin.Y + (height - labelSize.Y) * 0.5f), Styling.TextStrong);
-
-        ImGui.SetCursorScreenPos(origin);
-        ImGui.Dummy(new Vector2(width, height));
-        if (scrollIntoView)
-        {
-            ImGui.SetScrollHereY(0f);
-        }
     }
 
     private static void DrawSearch()
@@ -147,6 +127,7 @@ internal static class CustomListEditor
         noMatchesText = resultCount == 0 && trimmed.Length > 0 ? Loc.T(L.Common.NoMatches, trimmed) : string.Empty;
     }
 
+    // Zones a search can use are listed first, so the first zone reads FATE only when every zone does.
     private static string ZoneSummary(uint nameId)
     {
         var territories = MobSpawns.Territories(nameId);
@@ -155,8 +136,14 @@ internal static class CustomListEditor
             return string.Empty;
         }
 
-        var first = TerritoryNames.Of(territories[0]);
+        var first = ZoneLabel(nameId, territories[0]);
         return territories.Length == 1 ? first : Loc.T(L.CustomList.ZonesMore, first, territories.Length - 1);
+    }
+
+    private static string ZoneLabel(uint nameId, uint territoryId)
+    {
+        var zone = TerritoryNames.Of(territoryId);
+        return MobSpawns.IsFateOnly(nameId, territoryId) ? Loc.T(L.CustomList.ZoneFateOnly, zone) : zone;
     }
 
     private static void DrawResults(bool running)
@@ -294,7 +281,7 @@ internal static class CustomListEditor
     {
         var scale = ImGuiHelpers.GlobalScale;
         var origin = ImGui.GetCursorScreenPos();
-        var avail = ImGui.GetContentRegionAvail().X;
+        var available = ImGui.GetContentRegionAvail().X;
         var rowHeight = SummaryRowHeight * scale;
         var enabled = 0;
         var anyKills = false;
@@ -318,7 +305,7 @@ internal static class CustomListEditor
 
         var label = Loc.T(L.CustomList.ResetAll);
         var width = PillButton.Width(label, FontAwesomeIcon.UndoAlt);
-        ImGui.SetCursorScreenPos(new Vector2(origin.X + avail - width, origin.Y));
+        ImGui.SetCursorScreenPos(new Vector2(origin.X + available - width, origin.Y));
         if (PillButton.Draw("##ahg_custom_reset_all", label, Styling.AccentRose, PillButton.Emphasis.Ghost, FontAwesomeIcon.UndoAlt,
                 enabled: anyKills && !running, height: SummaryRowHeight, tooltip: Loc.T(L.CustomList.ResetAllHelp)))
         {
@@ -326,7 +313,7 @@ internal static class CustomListEditor
         }
 
         ImGui.SetCursorScreenPos(origin);
-        ImGui.Dummy(new Vector2(avail, rowHeight));
+        ImGui.Dummy(new Vector2(available, rowHeight));
     }
 
     private static RowAction DrawEntryRow(Configuration configuration, CustomMobEntry entry, int index, bool wide, bool running)
@@ -382,7 +369,7 @@ internal static class CustomListEditor
         }
 
         x -= 14f * scale;
-        var kills = KillsText(index, entry);
+        var kills = entryKills[index].Kills(entry.Killed, entry.Needed);
         var killsSize = TextDraw.Measure(kills);
         x -= killsSize.X;
         TextDraw.At(kills, new Vector2(x, midY - killsSize.Y * 0.5f), done ? Styling.AccentMint : Styling.TextSecondary);
@@ -404,6 +391,11 @@ internal static class CustomListEditor
             DrawZone(configuration, entry, new Vector2(controlsX + StepperWidth * scale + Gap * scale, controlsY), running);
         }
 
+        if (MobSpawns.IsFateOnly(entry.NameId, entry.PinnedTerritoryId))
+        {
+            x -= DrawFateOnlyBadge(drawList, x, midY, line) + 10f * scale;
+        }
+
         var name = TextDraw.Truncate(CustomMobCatalog.NameOf(entry.NameId), x - controlsX);
         var nameSize = TextDraw.Measure(name);
         TextDraw.At(name, new Vector2(controlsX, midY - nameSize.Y * 0.5f), entry.Enabled ? Styling.TextStrong : Styling.TextDim);
@@ -417,6 +409,17 @@ internal static class CustomListEditor
         ImGui.SetCursorScreenPos(origin);
         ImGui.Dummy(size);
         return action;
+    }
+
+    private static float DrawFateOnlyBadge(ImDrawListPtr drawList, float rightX, float midY, float line)
+    {
+        var width = Badge.Draw(drawList, Loc.T(L.HuntingLog.BadgeFateOnly), Styling.AccentNebula, rightX, midY);
+        if (Hit.HoveringRect(new Vector2(rightX - width, midY - line * 0.5f), new Vector2(rightX, midY + line * 0.5f)))
+        {
+            Tooltip.Show(Loc.T(L.CustomList.FateOnlyHelp));
+        }
+
+        return width;
     }
 
     // A drag edits the count on every frame it moves, so its saves are debounced.
@@ -471,16 +474,12 @@ internal static class CustomListEditor
         labels[0] = Loc.T(L.CustomList.AnyZone);
         for (var index = 0; index < territories.Length; index++)
         {
-            labels[index + 1] = TerritoryNames.Of(territories[index]);
+            labels[index + 1] = ZoneLabel(nameId, territories[index]);
         }
 
         zoneOptions[nameId] = new ZoneOptions(labels, language);
         return labels;
     }
-
-    private static string KillsText(int index, CustomMobEntry entry)
-        => entryKills[index].Get((long)entry.Killed << KillsShift | entry.Needed,
-            static key => Loc.T(L.Progress.Kills, (int)(key >> KillsShift), (int)(key & KillsMask)));
 
     private static void EnsureKillCaches(int count)
     {

@@ -1,8 +1,8 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
-    [string] $SpawnReportsPath = (Join-Path ([IO.Path]::GetTempPath()) 'claude/C--Development-FFXIV/85d3d192-bf9e-4caa-bc14-238d36ba8888/scratchpad/others/tc_monsters.json'),
-    [string] $SheetDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'claude/C--Development-FFXIV/85d3d192-bf9e-4caa-bc14-238d36ba8888/scratchpad/gamedata/csv'),
+    [string] $SpawnReportsPath,
+    [string] $SheetDirectory,
     [switch] $Download,
     [string] $OutputPath = (Join-Path $PSScriptRoot '../../AutoHuntGrinder/Core/Spawns/Data/MobSpawnTable.g.cs'),
     [double] $ClusterRadius = 25.0,
@@ -13,9 +13,18 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$cache = Join-Path ([IO.Path]::GetTempPath()) 'AutoHuntGrinder-MobSpawns'
+$spawnReportsFile = 'monsters.json'
+if (-not $SpawnReportsPath) {
+    $SpawnReportsPath = Join-Path $cache $spawnReportsFile
+}
+
+if (-not $SheetDirectory) {
+    $SheetDirectory = Join-Path $cache 'sheets'
+}
+
 $invariant = [Globalization.CultureInfo]::InvariantCulture
 $noticesPath = Join-Path $PSScriptRoot '../../THIRD-PARTY-NOTICES.md'
-$spawnReportsFile = 'monsters.json'
 $sheetSource = 'https://raw.githubusercontent.com/xivapi/ffxiv-datamining/a67c23b00fe8cb254855d06b59845958b55d28f3/csv/en'
 $sheetNames = @('BNpcName', 'Map', 'MapMarker', 'MonsterNote', 'MonsterNoteTarget', 'TerritoryType')
 $openWorldUse = 1
@@ -23,6 +32,8 @@ $targetsPerLogEntry = 4
 $zonesPerLogTarget = 3
 $pointKind = 0
 $areaKind = 1
+# Sort rank of a zone whose only reports come from FATEs: after every zone a search can use.
+$fateOnlyRank = 2
 # Reported heights are map z with one decimal and a map z unit is 100 yalms, so heights are stored in 10 yalm steps.
 $heightStep = 10
 $unknownHeight = [int][sbyte]::MinValue
@@ -30,7 +41,6 @@ $unknownHeight = [int][sbyte]::MinValue
 function Save-Source([string] $url, [string] $path) {
     Write-Host "Downloading $url"
     Invoke-WebRequest -Uri $url -OutFile $path
-    return $path
 }
 
 # The dataset commit is pinned once, in THIRD-PARTY-NOTICES.md, so a download always matches what is credited there.
@@ -153,6 +163,7 @@ function Get-Zone([int] $nameId, [int] $territoryId) {
             NameId      = $nameId
             TerritoryId = $territoryId
             Kind        = $pointKind
+            FateOnly    = $false
             Regular     = [Collections.Generic.List[double[]]]::new()
             Fate        = [Collections.Generic.List[double[]]]::new()
             Areas       = [Collections.Generic.List[double[]]]::new()
@@ -186,22 +197,36 @@ function Get-AreaPoints([int] $territoryId, [int] $placeNameId) {
     return , $points
 }
 
+function Test-AreaZone($zone) {
+    return $zone.Kind -eq $areaKind -and $zone.Points.Count -gt 0
+}
+
+# A zone known only from FATE reports takes the sub-area in their place, since the hunt never fights a FATE's mobs.
 function Add-AreaZone([int] $nameId, [int] $territoryId, [int] $placeNameId) {
     $zone = Get-Zone $nameId $territoryId
     if (-not $zone.Locations.Add($placeNameId)) {
-        return $zone.Points.Count -gt 0
+        return Test-AreaZone $zone
     }
 
     $areaPoints = Get-AreaPoints $territoryId $placeNameId
     if ($areaPoints.Count -eq 0) {
-        return $zone.Points.Count -gt 0
+        return Test-AreaZone $zone
     }
 
     $zone.Kind = $areaKind
+    $zone.FateOnly = $false
     $zone.Areas.AddRange($areaPoints)
     $zone.Reports = $zone.Areas.Count
     $zone.Points = Select-DistinctPoints $zone.Areas
     return $true
+}
+
+function Get-ZoneRank($zone) {
+    if ($zone.FateOnly) {
+        return $fateOnlyRank
+    }
+
+    return $zone.Kind
 }
 
 function Format-Number([double] $value, [string] $format) {
@@ -231,12 +256,11 @@ function Add-Integer([Collections.Generic.List[string]] $values, [int] $value) {
 }
 
 if ($Download) {
-    $cache = Join-Path ([IO.Path]::GetTempPath()) 'AutoHuntGrinder-MobSpawns'
-    $SheetDirectory = Join-Path $cache 'sheets'
     New-Item -ItemType Directory -Force -Path $SheetDirectory | Out-Null
-    $SpawnReportsPath = Save-Source (Get-PinnedDatasetUrl $spawnReportsFile) (Join-Path $cache $spawnReportsFile)
+    New-Item -ItemType Directory -Force -Path (Split-Path $SpawnReportsPath) | Out-Null
+    Save-Source (Get-PinnedDatasetUrl $spawnReportsFile) $SpawnReportsPath
     foreach ($name in $sheetNames) {
-        Save-Source "$sheetSource/$name.csv" (Join-Path $SheetDirectory "$name.csv") | Out-Null
+        Save-Source "$sheetSource/$name.csv" (Join-Path $SheetDirectory "$name.csv")
     }
 }
 
@@ -334,12 +358,11 @@ foreach ($key in $reports.Keys) {
     }
 }
 
-$fateOnlyZones = 0
 foreach ($zone in $zones.Values) {
     $source = $zone.Regular
     if ($source.Count -eq 0) {
         $source = $zone.Fate
-        $fateOnlyZones++
+        $zone.FateOnly = $true
     }
 
     $zone.Reports = $source.Count
@@ -386,19 +409,18 @@ foreach ($targetId in $logTargetIds) {
 
         foreach ($territoryId in $zoneTerritories[$placeNameId]) {
             $zone = $zones["$nameId/$territoryId"]
-            if ($null -ne $zone -and $zone.Kind -eq $pointKind -and $zone.Points.Count -gt 0) {
-                if ($zone.Regular.Count -gt 0) {
-                    $hasPoints = $true
-                }
-                else {
-                    $hasFatePoints = $true
-                }
-
+            if ($null -ne $zone -and $zone.Kind -eq $pointKind -and $zone.Points.Count -gt 0 -and -not $zone.FateOnly) {
+                $hasPoints = $true
                 continue
             }
 
             if ($locationId -ne 0 -and (Add-AreaZone $nameId $territoryId $locationId)) {
                 $hasArea = $true
+                continue
+            }
+
+            if ($null -ne $zone -and $zone.FateOnly -and $zone.Points.Count -gt 0) {
+                $hasFatePoints = $true
             }
         }
     }
@@ -406,11 +428,11 @@ foreach ($targetId in $logTargetIds) {
     if ($hasPoints) {
         $withPoints++
     }
-    elseif ($hasFatePoints) {
-        $withFatePoints++
-    }
     elseif ($hasArea) {
         $withArea++
+    }
+    elseif ($hasFatePoints) {
+        $withFatePoints++
     }
     elseif ($hasDuty) {
         $inDuty++
@@ -433,9 +455,10 @@ foreach ($zone in $zones.Values) {
     $zonesByName[$zone.NameId].Add($zone)
 }
 
-# Zones with reported positions come before sub-area labels, and busier zones first, so a run without a pinned zone takes the first.
+# Zones with reported positions come before sub-area labels and FATE-only zones last, busier zones first within each,
+# so a run without a pinned zone takes the first.
 $zoneOrder = @(
-    @{ Expression = 'Kind'; Ascending = $true }
+    @{ Expression = { Get-ZoneRank $_ }; Ascending = $true }
     @{ Expression = { $_.Points.Count }; Descending = $true }
     @{ Expression = 'Reports'; Descending = $true }
     @{ Expression = 'TerritoryId'; Ascending = $true }
@@ -448,13 +471,16 @@ $entryTerritoryIds = [Collections.Generic.List[string]]::new()
 $entryPointStarts = [Collections.Generic.List[string]]::new()
 $entryPointCounts = [Collections.Generic.List[string]]::new()
 $entryKinds = [Collections.Generic.List[string]]::new()
+$entryFateOnly = [Collections.Generic.List[string]]::new()
 $planarCoordinates = [Collections.Generic.List[string]]::new()
 $heights = [Collections.Generic.List[string]]::new()
 $entryTotal = 0
 $pointTotal = 0
 $areaEntries = 0
 $areaPoints = 0
+$fateOnlyEntries = 0
 $areaOnlyNames = 0
+$fateOnlyNames = 0
 foreach ($nameId in $zonesByName.Keys) {
     $nameZones = @($zonesByName[$nameId] | Sort-Object -Property $zoneOrder)
     Assert-Fits $nameId 0 ([uint16]::MaxValue) 'Name id'
@@ -463,7 +489,10 @@ foreach ($nameId in $zonesByName.Keys) {
     Add-Integer $nameIds $nameId
     Add-Integer $nameEntryStarts $entryTotal
     Add-Integer $nameEntryCounts $nameZones.Count
-    if ($nameZones[0].Kind -eq $areaKind) {
+    if ($nameZones[0].FateOnly) {
+        $fateOnlyNames++
+    }
+    elseif ($nameZones[0].Kind -eq $areaKind) {
         $areaOnlyNames++
     }
 
@@ -474,6 +503,7 @@ foreach ($nameId in $zonesByName.Keys) {
         Add-Integer $entryPointStarts $pointTotal
         Add-Integer $entryPointCounts $zone.Points.Count
         Add-Integer $entryKinds $zone.Kind
+        Add-Integer $entryFateOnly ([int]$zone.FateOnly)
         foreach ($point in $zone.Points) {
             $worldX = [int][Math]::Round($point[0], [MidpointRounding]::AwayFromZero)
             $worldZ = [int][Math]::Round($point[1], [MidpointRounding]::AwayFromZero)
@@ -494,6 +524,10 @@ foreach ($nameId in $zonesByName.Keys) {
             $areaEntries++
             $areaPoints += $zone.Points.Count
         }
+
+        if ($zone.FateOnly) {
+            $fateOnlyEntries++
+        }
     }
 
     $entryTotal += $nameZones.Count
@@ -509,6 +543,7 @@ $properties = @(
     Format-SpanProperty 'ushort' 'EntryPointStarts' $entryPointStarts 16
     Format-SpanProperty 'byte' 'EntryPointCounts' $entryPointCounts 24
     Format-SpanProperty 'byte' 'EntryKinds' $entryKinds 32
+    Format-SpanProperty 'byte' 'EntryFateOnly' $entryFateOnly 32
     Format-SpanProperty 'short' 'PlanarCoordinates' $planarCoordinates 16
     Format-SpanProperty 'sbyte' 'Heights' $heights 24
 )
@@ -532,13 +567,13 @@ $outputBytes = (Get-Item $OutputPath).Length
 
 Write-Host "Wrote $OutputPath ($(Format-Number ($outputBytes / 1024.0) '0.0') KiB)"
 Write-Host "Position reports: $openWorldReports in open-world zones; $skippedNames dataset names skipped for a missing or empty BNpcName row"
-Write-Host "Names: $($nameIds.Count) ($areaOnlyNames with sub-area points only)"
-Write-Host "Zones: $entryTotal ($fateOnlyZones from FATE positions only, $areaEntries from sub-area labels)"
+Write-Host "Names: $($nameIds.Count) ($areaOnlyNames with sub-area points only, $fateOnlyNames with FATE positions only)"
+Write-Host "Zones: $entryTotal ($fateOnlyEntries from FATE positions only, $areaEntries from sub-area labels)"
 Write-Host "Points: $pointTotal ($areaPoints sub-area points)"
 Write-Host "Hunting Log targets: $($logTargetIds.Count)"
 Write-Host "  with reported points in a listed zone: $withPoints"
-Write-Host "  with FATE points only: $withFatePoints"
 Write-Host "  with sub-area points only: $withArea"
+Write-Host "  with FATE points only: $withFatePoints"
 Write-Host "  in a duty, no points: $inDuty"
 Write-Host "  with nothing: $($uncovered.Count)"
 foreach ($line in $uncovered) {
