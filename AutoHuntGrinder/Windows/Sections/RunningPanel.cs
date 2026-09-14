@@ -17,6 +17,7 @@ internal static class RunningPanel
     private const int QueueLength = 6;
 
     private static readonly List<QueueEntry> queue = new(32);
+    private static readonly List<HuntObjective> objectiveQueue = new(QueueLength);
     private static readonly Comparison<QueueEntry> byZone = (left, right) => left.Target.TerritoryId.CompareTo(right.Target.TerritoryId);
 
     private static uint cachedTerritoryId = uint.MaxValue;
@@ -28,21 +29,40 @@ internal static class RunningPanel
     {
         var paused = controller.Paused;
         var (accent, accentSoft, label) = PhasePalette(controller);
-        var bills = controller.ActiveBills;
-        var workload = BillSelection.Measure(bills);
+        var objectiveRun = controller.Mode != HuntMode.MarkBills;
+        var workload = RunWorkload.Measure(controller);
 
-        DrawHeaderStrip(bills.Count, accent, accentSoft, paused);
+        DrawHeaderStrip(InPlay(controller), accent, accentSoft, paused);
         Styling.VSpace(6f);
-        DrawHeroCard(controller, workload, accent, accentSoft, label);
+        DrawHeroCard(controller, workload, objectiveRun, accent, accentSoft, label);
 
         Styling.VSpace(10f);
-        DrawStatTiles(controller);
+        DrawStatTiles(controller, objectiveRun);
 
         Styling.VSpace(10f);
-        DrawQueue(controller, bills, workload);
+        DrawQueueHeading();
+        if (objectiveRun)
+        {
+            DrawObjectiveQueue(controller);
+        }
+        else
+        {
+            DrawBillQueue(controller, workload);
+        }
     }
 
-    private static void DrawHeaderStrip(int billCount, Vector4 accent, Vector4 accentSoft, bool paused)
+    private static string InPlay(AutoHuntController controller)
+    {
+        var zoneName = CurrentZoneName();
+        return controller.Mode switch
+        {
+            HuntMode.HuntingLog => Loc.Plural(L.Run.LogsInPlay, controller.ActiveHuntingLogSlots.Count, zoneName),
+            HuntMode.CustomList => Loc.Plural(L.Run.MobsInPlay, controller.SessionSnapshot?.BillNames.Count ?? 0, zoneName),
+            _ => Loc.Plural(L.Run.InPlay, controller.ActiveBills.Count, zoneName),
+        };
+    }
+
+    private static void DrawHeaderStrip(string footer, Vector4 accent, Vector4 accentSoft, bool paused)
     {
         var scale = ImGuiHelpers.GlobalScale;
         var drawList = ImGui.GetWindowDrawList();
@@ -59,7 +79,6 @@ internal static class RunningPanel
         var statusSize = TextDraw.SmallCapsSize(status);
         TextDraw.SmallCaps(status, new Vector2(origin.X + radius * 2f + 12f * scale, midY - statusSize.Y * 0.5f), Styling.TextSecondary);
 
-        var footer = Loc.Plural(L.Run.InPlay, billCount, CurrentZoneName());
         using (Fonts.PushCaption())
         {
             var footerSize = TextDraw.Measure(footer);
@@ -69,7 +88,7 @@ internal static class RunningPanel
         ImGui.Dummy(new Vector2(avail, lineHeight));
     }
 
-    private static void DrawHeroCard(AutoHuntController controller, BillSelection.Workload workload, Vector4 accent, Vector4 accentSoft, string label)
+    private static void DrawHeroCard(AutoHuntController controller, BillSelection.Workload workload, bool objectiveRun, Vector4 accent, Vector4 accentSoft, string label)
     {
         var scale = ImGuiHelpers.GlobalScale;
         var size = new Vector2(ImGui.GetContentRegionAvail().X, Layout.HeroCardHeight * scale);
@@ -118,7 +137,7 @@ internal static class RunningPanel
         y += barHeight + 8f * scale;
         using (Fonts.PushCaption())
         {
-            TextDraw.At(Remaining(workload), new Vector2(columnX, y), Styling.WithAlpha(accentSoft, 0.9f));
+            TextDraw.At(Remaining(workload, objectiveRun), new Vector2(columnX, y), Styling.WithAlpha(accentSoft, 0.9f));
         }
 
         ImGui.Dummy(size);
@@ -171,11 +190,17 @@ internal static class RunningPanel
         ProgressRing.CenterValue(center, workload.KillsDone.ToString(Loc.Culture), Loc.T(L.Run.GoalOf, workload.KillsNeeded), Styling.TextStrong, Styling.TextDim);
     }
 
-    private static string Remaining(BillSelection.Workload workload)
+    // Before its first pass is planned an objective run has no workload yet, which is not the same as having finished it.
+    private static string Remaining(BillSelection.Workload workload, bool objectiveRun)
     {
         if (workload.KillsLeft > 0)
         {
             return Loc.Plural(L.Run.KillsToGo, workload.KillsLeft);
+        }
+
+        if (objectiveRun)
+        {
+            return workload.KillsNeeded > 0 ? Loc.T(L.Run.AllTargetsDone) : Loc.T(L.Common.Working);
         }
 
         return workload.PickUps > 0 ? Loc.Plural(L.Hunt.ToPickUp, workload.PickUps) : Loc.T(L.Run.AllKillsDone);
@@ -223,7 +248,7 @@ internal static class RunningPanel
         };
     }
 
-    private static void DrawStatTiles(AutoHuntController controller)
+    private static void DrawStatTiles(AutoHuntController controller, bool objectiveRun)
     {
         var session = controller.SessionSnapshot;
         var scale = ImGuiHelpers.GlobalScale;
@@ -231,16 +256,25 @@ internal static class RunningPanel
         var tileWidth = (ImGui.GetContentRegionAvail().X - gap * 3f) / 4f;
         var nuts = session?.Nuts ?? 0;
 
-        StatTile.Draw(Loc.T(L.Run.TileMarks), (session?.MarksKilled ?? 0).ToString(Loc.Culture), null, Styling.AccentGlow, tileWidth);
+        StatTile.Draw(Loc.T(objectiveRun ? L.Run.TileKills : L.Run.TileMarks), (session?.MarksKilled ?? 0).ToString(Loc.Culture), null, Styling.AccentGlow, tileWidth);
         ImGui.SameLine(0, gap);
-        StatTile.Draw(Loc.T(L.Run.TileBills), (session?.BillsCompleted ?? 0).ToString(Loc.Culture), null, Styling.AccentMint, tileWidth);
+        if (objectiveRun)
+        {
+            var objectives = controller.Objectives;
+            StatTile.Draw(Loc.T(L.Run.TileTargets), RunWorkload.CountDone(objectives).ToString(Loc.Culture), Loc.T(L.Run.GoalOf, objectives.Count), Styling.AccentMint, tileWidth);
+        }
+        else
+        {
+            StatTile.Draw(Loc.T(L.Run.TileBills), (session?.BillsCompleted ?? 0).ToString(Loc.Culture), null, Styling.AccentMint, tileWidth);
+        }
+
         ImGui.SameLine(0, gap);
         StatTile.Draw(Loc.T(L.Run.TileSeals), (session?.Seals ?? 0).ToString("N0", Loc.Culture), nuts > 0 ? Loc.T(L.Run.NutsSub, nuts) : null, Styling.AccentAmber, tileWidth);
         ImGui.SameLine(0, gap);
         StatTile.Draw(Loc.T(L.Run.TileElapsed), Formatting.Elapsed(session?.Elapsed ?? TimeSpan.Zero), null, Styling.AccentBlue, tileWidth);
     }
 
-    private static void DrawQueue(AutoHuntController controller, IReadOnlyList<HuntBill> bills, BillSelection.Workload workload)
+    private static void DrawQueueHeading()
     {
         var scale = ImGuiHelpers.GlobalScale;
         var origin = ImGui.GetCursorScreenPos();
@@ -248,7 +282,10 @@ internal static class RunningPanel
         var labelSize = TextDraw.SectionTitleSize(heading);
         TextDraw.SectionTitle(heading, origin, Styling.TextStrong);
         ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, labelSize.Y + 8f * scale));
+    }
 
+    private static void DrawBillQueue(AutoHuntController controller, BillSelection.Workload workload)
+    {
         queue.Clear();
         var givenUp = controller.SessionSnapshot?.GivenUpNameIds;
         var routeAhead = controller.Progress.RouteAhead;
@@ -258,7 +295,7 @@ internal static class RunningPanel
         }
         else
         {
-            FillByZone(controller.Progress, bills, givenUp);
+            FillByZone(controller.Progress, controller.ActiveBills, givenUp);
         }
 
         if (queue.Count == 0)
@@ -270,7 +307,40 @@ internal static class RunningPanel
         var shown = Math.Min(QueueLength, queue.Count);
         for (var index = 0; index < shown; index++)
         {
-            DrawQueueRow(queue[index], index == 0);
+            var target = queue[index].Target;
+            DrawQueueRow(target.Name, target.ZoneName, target.Killed, target.Needed, queue[index].Stale, index == 0);
+        }
+    }
+
+    // The pass is listed from the objective being hunted onward, with live counts, so a target that filled or was given
+    // up drops out.
+    private static void DrawObjectiveQueue(AutoHuntController controller)
+    {
+        objectiveQueue.Clear();
+        var session = controller.SessionSnapshot;
+        var ahead = controller.Progress.ObjectivesAhead;
+        for (var index = 0; index < ahead.Length && objectiveQueue.Count < QueueLength; index++)
+        {
+            var objective = ObjectiveProgress.Live(ahead[index]);
+            if (objective.Done || (session is not null && session.IsGivenUp(objective)))
+            {
+                continue;
+            }
+
+            objectiveQueue.Add(objective);
+        }
+
+        if (objectiveQueue.Count == 0)
+        {
+            EmptyHint(controller.Objectives.Count == 0 ? Loc.T(L.Run.RouteFirst) : Loc.T(L.Run.NoTargetsLeft));
+            return;
+        }
+
+        for (var index = 0; index < objectiveQueue.Count; index++)
+        {
+            var objective = objectiveQueue[index];
+            DrawQueueRow(ObjectiveProgress.Name(objective), CurrentMark.ZoneName(objective.TerritoryId),
+                Math.Min(objective.Killed, objective.Needed), objective.Needed, false, index == 0);
         }
     }
 
@@ -344,16 +414,15 @@ internal static class RunningPanel
         }
     }
 
-    private static void DrawQueueRow(QueueEntry entry, bool emphasize)
+    private static void DrawQueueRow(string name, string zoneName, int killed, int needed, bool stale, bool emphasize)
     {
         var scale = ImGuiHelpers.GlobalScale;
         var size = new Vector2(ImGui.GetContentRegionAvail().X, Layout.QueueRowHeight * scale);
         var origin = ImGui.GetCursorScreenPos();
         var end = origin + size;
         var drawList = ImGui.GetWindowDrawList();
-        var target = entry.Target;
 
-        var accent = entry.Stale ? Styling.AccentAmber : Styling.AccentGlow;
+        var accent = stale ? Styling.AccentAmber : Styling.AccentGlow;
         Paint.Glass(drawList, origin, end, Styling.CardRounding * scale, accent, emphasize ? 0.10f : 0.03f);
 
         var padX = 13f * scale;
@@ -361,7 +430,7 @@ internal static class RunningPanel
         var iconSize = TextDraw.IconSize(FontAwesomeIcon.Crosshairs);
         TextDraw.Icon(FontAwesomeIcon.Crosshairs, new Vector2(origin.X + padX, topY + (ImGui.GetTextLineHeight() - iconSize.Y) * 0.5f), emphasize ? accent : Styling.TextDim);
 
-        var meta = Loc.T(L.Run.TargetMeta, target.ZoneName, target.Killed, target.Needed);
+        var meta = Loc.T(L.Run.TargetMeta, zoneName, killed, needed);
         Vector2 metaSize;
         using (Fonts.PushCaption())
         {
@@ -370,10 +439,10 @@ internal static class RunningPanel
         }
 
         var nameX = origin.X + padX + iconSize.X + 10f * scale;
-        var name = TextDraw.Truncate(target.Name, end.X - padX - metaSize.X - 12f * scale - nameX);
-        TextDraw.At(name, new Vector2(nameX, topY), emphasize ? Styling.TextStrong : Styling.TextSecondary);
+        var shownName = TextDraw.Truncate(name, end.X - padX - metaSize.X - 12f * scale - nameX);
+        TextDraw.At(shownName, new Vector2(nameX, topY), emphasize ? Styling.TextStrong : Styling.TextSecondary);
 
-        var fraction = target.Needed > 0 ? target.Killed / (float)target.Needed : 0f;
+        var fraction = needed > 0 ? killed / (float)needed : 0f;
         Paint.Bar(drawList, new Vector2(origin.X + padX, end.Y - 13f * scale), size.X - padX * 2f, Layout.QueueBarHeight * scale, fraction, accent);
 
         ImGui.Dummy(size);

@@ -137,17 +137,24 @@ internal static partial class L
         public static readonly LocString UpNext = new("run.upNext", "Up next");
         public static readonly LocString NoMarksLeft = new("run.noMarksLeft", "No marks left on your bills.");
         public static readonly LocString PickUpFirst = new("run.pickUpFirst", "Marks show up here once their bills are picked up.");
+        public static readonly LocString RouteFirst = new("run.routeFirst", "Targets show up here once the route is planned.");
+        public static readonly LocString NoTargetsLeft = new("run.noTargetsLeft", "Nothing left to hunt in this pass.");
         public static readonly LocString TargetMeta = new("run.targetMeta", "{0}  ·  {1}/{2}");
         public static readonly LocPlural InPlay = new("run.inPlay", "{1}  ·  {0} bill in play", "{1}  ·  {0} bills in play");
+        public static readonly LocPlural LogsInPlay = new("run.logsInPlay", "{1}  ·  {0} log in play", "{1}  ·  {0} logs in play");
+        public static readonly LocPlural MobsInPlay = new("run.mobsInPlay", "{1}  ·  {0} mob in play", "{1}  ·  {0} mobs in play");
         public static readonly LocString SomewhereElse = new("run.somewhereElse", "Somewhere else");
         public static readonly LocString TileMarks = new("run.tile.marks", "Marks");
+        public static readonly LocString TileKills = new("run.tile.kills", "Kills");
         public static readonly LocString TileBills = new("run.tile.bills", "Bills");
+        public static readonly LocString TileTargets = new("run.tile.targets", "Targets");
         public static readonly LocString TileSeals = new("run.tile.seals", "Seals");
         public static readonly LocString TileElapsed = new("run.tile.elapsed", "Elapsed");
         public static readonly LocString NutsSub = new("run.nutsSub", "+{0} nuts");
         public static readonly LocString GoalOf = new("run.goal.of", "/ {0}");
         public static readonly LocPlural KillsToGo = new("run.goal.killsToGo", "{0} kill to go", "{0} kills to go");
         public static readonly LocString AllKillsDone = new("run.goal.allDone", "every mark down");
+        public static readonly LocString AllTargetsDone = new("run.goal.allTargetsDone", "every target down");
     }
 
     internal static class History
@@ -166,9 +173,11 @@ internal static partial class L
         public static readonly LocPlural ChartRange = new("history.chartRange", "last {0} run  ·  oldest to newest", "last {0} runs  ·  oldest to newest");
         public static readonly LocString ChartPeak = new("history.chartPeak", "peak {0}");
         public static readonly LocString ChartTooltip = new("history.chartTooltip", "{0}  ·  {1} marks  ·  {2} bills  ·  {3}");
-        public static readonly LocString RowDetail = new("history.rowDetail", "{0}  ·  {1}");
+        public static readonly LocString RowDetail = new("history.rowDetail", "{0}  ·  {1}  ·  {2}");
         public static readonly LocString TooltipRate = new("history.tooltip.rate", "Rate: {0} marks/h");
         public static readonly LocString TooltipBills = new("history.tooltip.bills", "Bills: {0}");
+        public static readonly LocString TooltipLogs = new("history.tooltip.logs", "Logs: {0}");
+        public static readonly LocString TooltipMobs = new("history.tooltip.mobs", "Mobs: {0}");
         public static readonly LocString JustNow = new("history.time.justNow", "just now");
         public static readonly LocString MinutesAgo = new("history.time.minutesAgo", "{0}m ago");
         public static readonly LocString HoursAgo = new("history.time.hoursAgo", "{0}h ago");
@@ -297,7 +306,7 @@ internal static partial class L
 
     internal static class Plugin
     {
-        public static readonly LocString CommandHelp = new("plugin.commandHelp", "Toggle the Auto Hunt Grinder window. /ahg config | stats | deps | about | pause (pause or resume the run) | target (dump current target's BaseId).");
+        public static readonly LocString CommandHelp = new("plugin.commandHelp", "Toggle the Auto Hunt Grinder window. /ahg config | stats | deps | about | pause (pause or resume the run) | target (dump the current target's BaseId and spawn points) | logdump (write the Hunting Log state to the plugin log).");
         public static readonly LocString CommandHelpAlias = new("plugin.commandHelpAlias", "Alias for /ahg.");
     }
 }

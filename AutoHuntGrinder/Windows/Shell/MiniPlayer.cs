@@ -1,4 +1,3 @@
-using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Core.Tasks;
 using AutoHuntGrinder.Windows.Components;
@@ -26,7 +25,7 @@ internal static class MiniPlayer
         var drawList = ImGui.GetWindowDrawList();
         var controller = plugin.Controller;
         var info = ReadyState.Resolve(plugin.Configuration, controller);
-        var workload = BillSelection.Measure(controller.ActiveBills);
+        var workload = RunWorkload.Measure(controller);
 
         Dock.Background(drawList, origin, end, windowRounding);
 

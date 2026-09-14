@@ -1,4 +1,3 @@
-using AutoHuntGrinder.Core;
 using AutoHuntGrinder.Core.Game.Ops;
 using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Hunts;
@@ -67,14 +66,18 @@ internal static class HuntLauncher
     internal static void Start(HuntMode mode)
     {
         var plugin = Plugin.Instance;
-        if (mode == HuntMode.MarkBills)
+        switch (mode)
         {
-            plugin.Controller.Start(BillSelection.ResolveStartList(plugin.Configuration));
-            return;
+            case HuntMode.HuntingLog:
+                plugin.Controller.StartHuntingLog(plugin.Configuration.HuntingLogQueue);
+                return;
+            case HuntMode.CustomList:
+                plugin.Controller.StartCustomList();
+                return;
+            default:
+                plugin.Controller.Start(BillSelection.ResolveStartList(plugin.Configuration));
+                return;
         }
-
-        var plan = Assess(plugin.Configuration, mode);
-        Svc.Log.Info($"{AhgConstants.LogPrefix} Start: {mode} runs are not wired to the controller yet ({plan.Workable} of {plan.Picked} ready, {plan.KillsLeft} kills left, first log slot {plan.FirstSlot})");
     }
 
     public static Plan Assess(Configuration configuration, HuntMode mode)

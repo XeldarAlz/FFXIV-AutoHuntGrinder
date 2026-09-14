@@ -1,4 +1,3 @@
-using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Windows.Components;
 using AutoHuntGrinder.Windows.Sections;
@@ -150,23 +149,24 @@ internal static class HeaderBar
 
         if (!controller.Running)
         {
-            var startList = BillSelection.ResolveStartList(plugin.Configuration);
-            if (startList.Count == 0)
+            var configuration = plugin.Configuration;
+            var plan = HuntLauncher.Assess(configuration, configuration.Mode);
+            if (plan.Readiness != HuntLauncher.Readiness.Ready)
             {
                 return;
             }
 
-            var plan = ReadyState.PlanSummary(startList);
+            var summary = HuntLauncher.Sublabel(configuration, plan);
             using (Fonts.PushCaption())
             {
-                var planSize = TextDraw.Measure(plan);
-                TextDraw.At(TextDraw.Truncate(plan, rightX - x), new Vector2(x, midY - planSize.Y * 0.5f), Styling.TextDim);
+                var summarySize = TextDraw.Measure(summary);
+                TextDraw.At(TextDraw.Truncate(summary, rightX - x), new Vector2(x, midY - summarySize.Y * 0.5f), Styling.TextDim);
             }
 
             return;
         }
 
-        var workload = BillSelection.Measure(controller.ActiveBills);
+        var workload = RunWorkload.Measure(controller);
         var drawList = ImGui.GetWindowDrawList();
         var barWidth = CompactBarWidth * scale;
         var barX = rightX - barWidth;

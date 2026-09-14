@@ -15,18 +15,11 @@ internal static unsafe class HuntingLogReader
     private const long RefreshIntervalMs = 250;
     private const int CountsPerSlot = EntriesPerRank * TargetsPerEntry;
 
-    // LogMessage rows the game prints when a Hunting Log kill, entry or rank lands (1001 to 1005) and when a rank opens.
-    private const uint FirstProgressMessageId = 1001;
-    private const uint LastProgressMessageId = 1005;
-    private const uint RankUnlockedMessageId = 1011;
-    private const uint RankUnlockedAlternateMessageId = 1012;
-
     private static readonly HuntingLogStatus[] statuses = new HuntingLogStatus[SlotCount];
     private static readonly byte[] ranks = new byte[SlotCount];
     private static readonly byte[] counts = new byte[SlotCount * CountsPerSlot];
 
     private static long refreshedAtTick = -RefreshIntervalMs;
-    private static bool refreshPending;
     private static bool indexMismatchLogged;
 
     public static HuntingLogStatus Status(byte slot) => slot < SlotCount ? statuses[slot] : HuntingLogStatus.Unavailable;
@@ -123,28 +116,15 @@ internal static unsafe class HuntingLogReader
         return state == null ? NoLog : SlotForGrandCompany(state->GrandCompany);
     }
 
-    // The counts can land a frame after the message, so the next Refresh reads them instead of this callback.
-    public static bool NoteLogMessage(uint logMessageId)
-    {
-        if (logMessageId is not ((>= FirstProgressMessageId and <= LastProgressMessageId) or RankUnlockedMessageId or RankUnlockedAlternateMessageId))
-        {
-            return false;
-        }
-
-        refreshPending = true;
-        return true;
-    }
-
     public static void Refresh(bool force = false)
     {
         var now = Environment.TickCount64;
-        if (!force && !refreshPending && now - refreshedAtTick < RefreshIntervalMs)
+        if (!force && now - refreshedAtTick < RefreshIntervalMs)
         {
             return;
         }
 
         refreshedAtTick = now;
-        refreshPending = false;
         var manager = Svc.ClientState.IsLoggedIn ? MonsterNoteManager.Instance() : null;
         if (manager == null || !IndexesMatch(manager))
         {

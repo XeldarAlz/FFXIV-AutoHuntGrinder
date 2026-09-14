@@ -1,6 +1,7 @@
 using AutoHuntGrinder.Core;
 using AutoHuntGrinder.Core.Debug;
 using AutoHuntGrinder.Core.Game.Watchers;
+using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Kills;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Core.Stats;
@@ -63,6 +64,7 @@ public sealed class Plugin : IDalamudPlugin
         gmAlertWatcher = new GmAlertWatcher();
         partyInviteWatcher = new PartyInviteWatcher();
         Kills = new KillLedger();
+        Kills.HuntingLogChanged += OnHuntingLogChanged;
 
         InitializeLocalization();
         Fonts.Initialize(PluginInterface.UiBuilder, PluginDirectory);
@@ -110,6 +112,7 @@ public sealed class Plugin : IDalamudPlugin
         dutyWatcher.Dispose();
         gmAlertWatcher.Dispose();
         partyInviteWatcher.Dispose();
+        Kills.HuntingLogChanged -= OnHuntingLogChanged;
         Kills.Dispose();
 
         CLibMain.Dispose();
@@ -158,6 +161,11 @@ public sealed class Plugin : IDalamudPlugin
         else if (trimmed.Equals("target", StringComparison.OrdinalIgnoreCase))
         {
             TargetDumper.Dump();
+            SpawnDumper.DumpTarget();
+        }
+        else if (trimmed.Equals("logdump", StringComparison.OrdinalIgnoreCase))
+        {
+            HuntingLogDumper.Dump();
         }
         else if (IsGotoCommand(trimmed))
         {
@@ -176,6 +184,10 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     private void OnFrameworkUpdate(IFramework framework) => Controller.Tick();
+
+    // The game prints a Hunting Log line as it writes new counts, so the library and a run read them at once instead of
+    // on the reader's next throttled refresh.
+    private static void OnHuntingLogChanged() => HuntingLogReader.Refresh(force: true);
 
     private static bool IsGotoCommand(string arguments)
         => arguments.StartsWith(GotoSubcommand, StringComparison.OrdinalIgnoreCase)

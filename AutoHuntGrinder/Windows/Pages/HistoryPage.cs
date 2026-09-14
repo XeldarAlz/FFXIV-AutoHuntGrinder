@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Core.Stats;
 using AutoHuntGrinder.Windows.Components;
@@ -14,6 +15,7 @@ internal sealed class HistoryPage
     private const int TileCount = 5;
     private const float PadX = 14f;
     private const float MetricWidth = 64f;
+    private const float ModeIconColumn = 18f;
     private const float ConfirmSlide = 12f;
 
     private bool confirmClear;
@@ -181,9 +183,10 @@ internal sealed class HistoryPage
 
         var padX = PadX * scale;
         var midY = origin.Y + size.Y * 0.5f;
+        var textX = DrawModeIcon(record.Mode, origin.X + padX, midY);
         var when = RelativeTime(record.EndedAtUtc);
         var job = string.IsNullOrEmpty(record.JobAbbreviation) ? "—" : record.JobAbbreviation;
-        var detail = Loc.T(L.History.RowDetail, job, Formatting.Elapsed(record.Duration));
+        var detail = Loc.T(L.History.RowDetail, HuntModeLabels.Label(record.Mode), job, Formatting.Elapsed(record.Duration));
 
         var whenSize = TextDraw.Measure(when);
         Vector2 detailSize;
@@ -193,10 +196,10 @@ internal sealed class HistoryPage
         }
 
         var top = midY - (whenSize.Y + 3f * scale + detailSize.Y) * 0.5f;
-        TextDraw.At(when, new Vector2(origin.X + padX, top), Styling.TextStrong);
+        TextDraw.At(when, new Vector2(textX, top), Styling.TextStrong);
         using (Fonts.PushCaption())
         {
-            TextDraw.At(detail, new Vector2(origin.X + padX, top + whenSize.Y + 3f * scale), Styling.TextDim);
+            TextDraw.At(detail, new Vector2(textX, top + whenSize.Y + 3f * scale), Styling.TextDim);
         }
 
         var metricWidth = MetricWidth * scale;
@@ -213,6 +216,17 @@ internal sealed class HistoryPage
         {
             Tooltip.Show(RunTooltip(record));
         }
+    }
+
+    // Returns where the row's text starts; the icon is centred in a fixed column so every row's text lines up.
+    private static float DrawModeIcon(HuntMode mode, float x, float midY)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var column = ModeIconColumn * scale;
+        var icon = HuntModeLabels.Icon(mode);
+        var iconSize = TextDraw.IconSize(icon);
+        TextDraw.Icon(icon, new Vector2(x + (column - iconSize.X) * 0.5f, midY - iconSize.Y * 0.5f), Styling.TextDim);
+        return x + column + 10f * scale;
     }
 
     private static string Metric(int value) => value > 0 ? value.ToString("N0", Loc.Culture) : "—";
@@ -238,11 +252,18 @@ internal sealed class HistoryPage
 
         if (record.BillNames.Count > 0)
         {
-            lines += "\n" + Loc.T(L.History.TooltipBills, string.Join(", ", record.BillNames));
+            lines += "\n" + Loc.T(NamesHeading(record.Mode), string.Join(", ", record.BillNames));
         }
 
         return lines;
     }
+
+    private static LocString NamesHeading(HuntMode mode) => mode switch
+    {
+        HuntMode.HuntingLog => L.History.TooltipLogs,
+        HuntMode.CustomList => L.History.TooltipMobs,
+        _ => L.History.TooltipBills,
+    };
 
     private static string RelativeTime(DateTime utc)
     {

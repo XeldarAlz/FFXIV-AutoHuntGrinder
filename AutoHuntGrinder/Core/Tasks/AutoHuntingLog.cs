@@ -32,7 +32,6 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
 
     protected override async Task Execute()
     {
-        Plugin.Kills.HuntingLogChanged += OnHuntingLogChanged;
         try
         {
             await Hunt();
@@ -42,14 +41,7 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
             RunSession.RecordFault(exception, CancelToken);
             throw;
         }
-        finally
-        {
-            Plugin.Kills.HuntingLogChanged -= OnHuntingLogChanged;
-        }
     }
-
-    // The counts are written with the log line, so the reader catches them at once instead of on its next throttle tick.
-    private static void OnHuntingLogChanged() => HuntingLogReader.Refresh(force: true);
 
     private async Task Hunt()
     {

@@ -1,10 +1,8 @@
 using AutoHuntGrinder.Core.Hunts;
-using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Core.Tasks;
 using AutoHuntGrinder.Windows.Components;
 using AutoHuntGrinder.Windows.Sections;
 using AutoHuntGrinder.Windows.Shell;
-using Dalamud.Interface;
 
 namespace AutoHuntGrinder.Windows.Pages;
 
@@ -75,9 +73,10 @@ internal sealed class HuntPage
 
     private void DrawModeSwitch(Configuration configuration, AutoHuntController controller)
     {
-        modeItems[0] = new Segmented.Item(FontAwesomeIcon.Scroll, Loc.T(L.HuntingLog.ModeBills));
-        modeItems[1] = new Segmented.Item(FontAwesomeIcon.BookOpen, Loc.T(L.HuntingLog.ModeHuntingLog));
-        modeItems[2] = new Segmented.Item(FontAwesomeIcon.Crosshairs, Loc.T(L.HuntingLog.ModeCustom));
+        for (var index = 0; index < modes.Length; index++)
+        {
+            modeItems[index] = new Segmented.Item(HuntModeLabels.Icon(modes[index]), HuntModeLabels.Label(modes[index]));
+        }
 
         var selected = Math.Max(0, Array.IndexOf(modes, configuration.Mode));
         if (!Segmented.Draw("##ahg_mode_switch", modeItems, ref selected, enabled: !controller.Running, height: Layout.SegmentHeight))
