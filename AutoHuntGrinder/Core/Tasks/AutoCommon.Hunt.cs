@@ -570,6 +570,22 @@ public abstract partial class AutoCommon
 
     private MarkOutcome? CheckMarkState(MarkHuntContext hunt)
     {
+        if (CheckMarkStanding(hunt) is { } stop)
+        {
+            return stop;
+        }
+
+        if (hunt.UncountedKills >= MaxUncountedMarkKills)
+        {
+            Warn($"Hunt: {hunt.UncountedKills} kills in a row on {hunt.Name} did not count on {hunt.SourceName}; giving it up");
+            return MarkOutcome.KillsNotCounted;
+        }
+
+        return Environment.TickCount64 >= hunt.SearchDeadline ? hunt.ExpiredOutcome : null;
+    }
+
+    private MarkOutcome? CheckMarkStanding(MarkHuntContext hunt)
+    {
         if (CancelToken.IsCancellationRequested)
         {
             return MarkOutcome.Cancelled;
@@ -586,18 +602,7 @@ public abstract partial class AutoCommon
             return MarkOutcome.Killed;
         }
 
-        if (!progress.Tracked)
-        {
-            return MarkOutcome.NotHeld;
-        }
-
-        if (hunt.UncountedKills >= MaxUncountedMarkKills)
-        {
-            Warn($"Hunt: {hunt.UncountedKills} kills in a row on {hunt.Name} did not count on {hunt.SourceName}; giving it up");
-            return MarkOutcome.KillsNotCounted;
-        }
-
-        return Environment.TickCount64 >= hunt.SearchDeadline ? hunt.ExpiredOutcome : null;
+        return progress.Tracked ? null : MarkOutcome.NotHeld;
     }
 
     private static MarkProgress ReadBillProgress(HuntBill bill, HuntTarget target, bool force, out BillStatus status)
@@ -734,6 +739,10 @@ public abstract partial class AutoCommon
         public bool IsHuntMark => MarkRank.HasValue;
 
         public bool AppearsOnTrigger { get; private init; }
+
+        // A B rank is back soon after it falls, so a sweep that loses one keeps looking; an A or S rank, or a mark that
+        // appears on a trigger, stays gone for the rest of the search.
+        public bool RespawnsWithinSearch => MarkRank == HuntMarkRank.B && !AppearsOnTrigger;
 
         public uint TerritoryId { get; }
 

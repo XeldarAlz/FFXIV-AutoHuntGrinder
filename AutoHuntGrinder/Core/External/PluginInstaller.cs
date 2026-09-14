@@ -20,7 +20,7 @@ public static class PluginInstaller
             var ok = await DalamudReflector.AddPlugin(info.RepoUrl, info.InternalName);
             Svc.Log.Info(ok
                 ? $"[ExternalPlugin] {info.DisplayName} installed."
-                : $"[ExternalPlugin] {info.DisplayName} install reported failure — repo may need to be added manually.");
+                : $"[ExternalPlugin] {info.DisplayName} install reported failure; the repo may need to be added manually.");
             return ok;
         }
         catch (Exception ex)

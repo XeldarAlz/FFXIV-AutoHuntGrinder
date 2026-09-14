@@ -6,7 +6,6 @@ using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using Lumina.Excel.Sheets;
 using System.Runtime.CompilerServices;
 using System.Text;
-using ClientAchievementState = FFXIVClientStructs.FFXIV.Client.Game.UI.Achievement.AchievementState;
 
 namespace AutoHuntGrinder.Core.Debug;
 
@@ -49,15 +48,7 @@ internal static unsafe class HuntingLogDumper
 
     private static void DumpAchievements()
     {
-        var state = AchievementReader.LoadState();
-        Log($"achievements: state {state?.ToString() ?? "unreadable"}, last load request {AchievementReader.MillisecondsSinceLoadRequest} ms ago (-1 = never)");
-        if (state == ClientAchievementState.Invalid)
-        {
-            Log(AchievementReader.RequestLoad()
-                ? "achievements: requested the completion list; run the dump again in a few seconds to see it load"
-                : "achievements: a load request went out under 30 s ago; not asking again yet");
-        }
-
+        AchievementDump.LogLoadState(Log);
         var books = HuntingLogRegistry.Books;
         for (var index = 0; index < books.Length; index++)
         {

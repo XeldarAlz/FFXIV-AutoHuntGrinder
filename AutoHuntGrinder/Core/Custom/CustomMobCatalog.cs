@@ -1,7 +1,6 @@
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Spawns;
 using ECommons.DalamudServices;
-using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using System.Globalization;
 
@@ -74,14 +73,10 @@ internal static class CustomMobCatalog
             return cached;
         }
 
-        var name = ReadName(Svc.Data.GetExcelSheet<BNpcName>(), nameId);
-        var resolved = name.Length == 0 ? $"#{nameId}" : name;
+        var resolved = GameText.NpcNameOrId(Svc.Data.GetExcelSheet<BNpcName>(), nameId);
         unlistedNames[nameId] = resolved;
         return resolved;
     }
-
-    private static string ReadName(ExcelSheet<BNpcName> sheet, uint nameId)
-        => GameText.Title(sheet.GetRowOrDefault(nameId)?.Singular.ExtractText() ?? string.Empty);
 
     private static CatalogArrays Load()
     {
@@ -91,7 +86,7 @@ internal static class CustomMobCatalog
         var names = new List<string>(tableNameIds.Length);
         for (var tableIndex = 0; tableIndex < tableNameIds.Length; tableIndex++)
         {
-            var name = ReadName(sheet, tableNameIds[tableIndex]);
+            var name = GameText.NpcName(sheet, tableNameIds[tableIndex]);
             if (name.Length == 0)
             {
                 continue;

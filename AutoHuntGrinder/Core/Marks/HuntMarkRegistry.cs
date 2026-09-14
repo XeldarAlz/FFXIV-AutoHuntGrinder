@@ -1,7 +1,6 @@
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Travel;
 using ECommons.DalamudServices;
-using Lumina.Excel;
 using Lumina.Excel.Sheets;
 
 namespace AutoHuntGrinder.Core.Marks;
@@ -48,8 +47,6 @@ internal static class HuntMarkRegistry
 
     // The SS marks and their minions spawn in any zone of their expansion; the zone kept for them is only the first that
     // lists them.
-    public static bool IsExpansionWide(uint nameId) => IsExpansionWideAt(IndexOf(nameId));
-
     public static bool IsExpansionWideAt(int index)
     {
         var expansionWide = Data.ExpansionWide;
@@ -70,6 +67,10 @@ internal static class HuntMarkRegistry
         return (uint)index < (uint)marks.Length && !Data.ExpansionWide[index] ? marks[index].TerritoryId : AnyTerritory;
     }
 
+    public static uint SpawnTerritoryOf(uint nameId) => SpawnTerritoryAt(IndexOf(nameId));
+
+    public static int RankBit(HuntMarkRank rank) => 1 << (int)rank;
+
     public static string NameOf(uint nameId) => NameAt(IndexOf(nameId));
 
     public static string NameAt(int index)
@@ -84,9 +85,7 @@ internal static class HuntMarkRegistry
         return (uint)index < (uint)zoneNames.Length ? zoneNames[index] : string.Empty;
     }
 
-    // Fills results with indices into Marks in display order; null rank or expansion accepts any, and the query matches
-    // anywhere in the mark's name or its zone's name.
-    public static int Filter(HuntMarkRank? rank, ExpansionKind? expansion, ReadOnlySpan<char> query, Span<int> results)
+    public static int Filter(int rankMask, ExpansionKind? expansion, ReadOnlySpan<char> query, Span<int> results)
     {
         var data = Data;
         var trimmed = query.Trim();
@@ -102,7 +101,7 @@ internal static class HuntMarkRegistry
         for (var position = 0; position < order.Length && found < results.Length; position++)
         {
             var index = order[position];
-            if (!Matches(data, index, rank, expansion, needle))
+            if (!Matches(data, index, rankMask, expansion, needle))
             {
                 continue;
             }
@@ -113,10 +112,10 @@ internal static class HuntMarkRegistry
         return found;
     }
 
-    private static bool Matches(Tables data, int index, HuntMarkRank? rank, ExpansionKind? expansion, ReadOnlySpan<char> needle)
+    private static bool Matches(Tables data, int index, int rankMask, ExpansionKind? expansion, ReadOnlySpan<char> needle)
     {
         var mark = data.Marks[index];
-        if (rank is { } wantedRank && mark.Rank != wantedRank)
+        if ((rankMask & RankBit(mark.Rank)) == 0)
         {
             return false;
         }
@@ -174,7 +173,7 @@ internal static class HuntMarkRegistry
                 var mark = byName[index].Mark;
                 marks[index] = mark;
                 nameIds[index] = mark.NameId;
-                names[index] = ReadName(npcNames, mark.NameId);
+                names[index] = GameText.NpcNameOrId(npcNames, mark.NameId);
                 nameKeys[index] = names[index].ToLowerInvariant();
                 zoneNames[index] = TerritoryNames.Of(mark.TerritoryId);
                 expansionWide[index] = repeatedNames.Contains(mark.NameId);
@@ -277,12 +276,6 @@ internal static class HuntMarkRegistry
             var key = zoneName.ToLowerInvariant();
             zoneKeys[territoryId] = key;
             return key;
-        }
-
-        private static string ReadName(ExcelSheet<BNpcName> sheet, uint nameId)
-        {
-            var name = GameText.Title(sheet.GetRowOrDefault(nameId)?.Singular.ExtractText() ?? string.Empty);
-            return name.Length == 0 ? $"#{nameId}" : name;
         }
 
         private static int[] BuildDisplayOrder(Listing[] byName, bool[] expansionWide)

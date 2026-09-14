@@ -11,7 +11,6 @@ using Dalamud.Interface.Textures;
 using Dalamud.Interface.Utility;
 using ECommons.DalamudServices;
 using System.Numerics;
-using ClientAchievementState = FFXIVClientStructs.FFXIV.Client.Game.UI.Achievement.AchievementState;
 
 namespace AutoHuntGrinder.Windows.Sections;
 
@@ -19,6 +18,7 @@ internal static class MarkAchievementBoard
 {
     private const float Gap = 8f;
     private const float GroupSpace = 14f;
+    private const float GroupLabelBelow = 2f;
     private const float HeaderHeight = 58f;
     private const float PadX = 14f;
     private const float IconSize = 36f;
@@ -31,11 +31,11 @@ internal static class MarkAchievementBoard
     private const float CellMinWidth = 250f;
     private const float CellPadX = 10f;
     private const float CellAddSize = 26f;
+    private const float CellLineGap = 2f;
+    private const float CellBadgeGap = 6f;
     private const float FooterHeight = 30f;
     private const float ProgressBarHeight = 3f;
     private const float BodyRevealMs = 180f;
-    // The reader drops an unanswered request after 5 s; waiting a little longer lets it log that first.
-    private const long ProgressAnswerMs = 6_000;
     private const int CountShift = 16;
     private const long CountMask = 0xFFFF;
 
@@ -48,8 +48,6 @@ internal static class MarkAchievementBoard
     private static uint pendingAchievementId;
     private static uint refusedAchievementId;
     private static uint unansweredAchievementId;
-    private static long pendingSinceTick;
-    private static bool checkRefused;
 
     private enum Fold : byte { Auto, Open, Closed }
 
@@ -69,11 +67,6 @@ internal static class MarkAchievementBoard
         }
 
         EnsureState(achievements.Length);
-        if (AchievementReader.LoadState() != ClientAchievementState.Invalid)
-        {
-            checkRefused = false;
-        }
-
         PollProgress(achievements);
         DrawSummary(achievements);
 
@@ -84,7 +77,7 @@ internal static class MarkAchievementBoard
             var achievement = achievements[index];
             if ((int)achievement.Expansion != previousExpansion)
             {
-                DrawGroupHeader(achievement.Expansion, previousExpansion >= 0);
+                GroupLabel.Draw(ExpansionLabels.Name(achievement.Expansion), previousExpansion >= 0 ? GroupSpace : 0f, GroupLabelBelow);
                 previousExpansion = (int)achievement.Expansion;
             }
 
@@ -108,7 +101,8 @@ internal static class MarkAchievementBoard
         inListTexts = new CachedText[count];
     }
 
-    // One progress request is in flight at a time; its answer lands on the card that asked.
+    // One progress request is in flight at a time; its answer lands on the card that asked, and the reader decides when
+    // an answer is overdue.
     private static void PollProgress(ReadOnlySpan<MarkAchievement> achievements)
     {
         if (pendingAchievementId == 0)
@@ -129,12 +123,11 @@ internal static class MarkAchievementBoard
             return;
         }
 
-        if (Environment.TickCount64 - pendingSinceTick < ProgressAnswerMs)
+        if (AchievementReader.AwaitedProgress() == pendingAchievementId)
         {
             return;
         }
 
-        Svc.Log.Info($"{AhgConstants.LogPrefix} Mark achievements: no progress answer for achievement {pendingAchievementId}; the card can ask again");
         unansweredAchievementId = pendingAchievementId;
         pendingAchievementId = 0;
     }
@@ -182,20 +175,6 @@ internal static class MarkAchievementBoard
         }
 
         Styling.VSpace(4f);
-    }
-
-    private static void DrawGroupHeader(ExpansionKind expansion, bool spaced)
-    {
-        if (spaced)
-        {
-            Styling.VSpace(GroupSpace);
-        }
-
-        var origin = ImGui.GetCursorScreenPos();
-        var label = ExpansionLabels.Name(expansion);
-        var labelSize = TextDraw.SmallCapsSize(label);
-        TextDraw.SmallCaps(label, new Vector2(origin.X + 2f * ImGuiHelpers.GlobalScale, origin.Y), Styling.TextMuted);
-        ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, labelSize.Y + 2f * ImGuiHelpers.GlobalScale));
     }
 
     private static void DrawCard(int index, in MarkAchievement achievement, bool running)
@@ -274,10 +253,8 @@ internal static class MarkAchievementBoard
 
         if (status == AchievementStatus.Unknown)
         {
-            var loadState = AchievementReader.LoadState();
-            var checkLabel = Loc.T(loadState == ClientAchievementState.Requested ? L.HuntingLog.Checking : L.HuntingLog.Check);
-            return new CardAction(ActionKind.Check, checkLabel, FontAwesomeIcon.Sync, loadState == ClientAchievementState.Invalid,
-                Loc.T(checkRefused ? L.HuntingLog.CheckWait : L.HuntingLog.CheckHelp));
+            var check = AchievementCheck.Read();
+            return new CardAction(ActionKind.Check, check.Label, AchievementCheck.Icon, check.Enabled, check.Tooltip);
         }
 
         var achievementId = achievement.AchievementId;
@@ -306,7 +283,7 @@ internal static class MarkAchievementBoard
 
         if (action.Kind == ActionKind.Check)
         {
-            checkRefused = !AchievementReader.RequestLoad();
+            AchievementCheck.Press();
             return;
         }
 
@@ -324,7 +301,6 @@ internal static class MarkAchievementBoard
 
         refusedAchievementId = 0;
         pendingAchievementId = achievementId;
-        pendingSinceTick = Environment.TickCount64;
     }
 
     private static void DrawHeader(int index, in MarkAchievement achievement, AchievementStatus status, int markCount, Vector2 origin, float headerWidth,
@@ -422,7 +398,6 @@ internal static class MarkAchievementBoard
         var drawList = ImGui.GetWindowDrawList();
         var end = min + size;
         var listed = CustomMobList.Contains(mark.NameId);
-        var markIndex = HuntMarkRegistry.IndexOf(mark.NameId);
         Paint.Fill(drawList, min, end, listed ? Styling.WithAlpha(Styling.AccentMint, 0.08f) : Styling.WithAlpha(Styling.Surface2, 0.45f), 8f * scale);
 
         var padX = CellPadX * scale;
@@ -447,38 +422,8 @@ internal static class MarkAchievementBoard
             ImGui.PopID();
         }
 
-        var textX = min.X + padX;
-        var textRight = rightX - slot - 8f * scale;
-        var lineHeight = ImGui.GetTextLineHeight();
-        float captionHeight;
-        using (Fonts.PushCaption())
-        {
-            captionHeight = ImGui.GetTextLineHeight();
-        }
-
-        var top = midY - (lineHeight + 2f * scale + captionHeight) * 0.5f;
-        var name = HuntMarkRegistry.NameAt(markIndex);
-        TextDraw.At(TextDraw.Truncate(name, textRight - textX), new Vector2(textX, top), listed ? Styling.TextSecondary : Styling.TextStrong);
-
-        var captionY = top + lineHeight + 2f * scale;
-        var state = MarkBadges.SpawnStateAt(markIndex);
-        var zoneRight = textRight;
-        var spawnWidth = MarkBadges.DrawSpawn(drawList, state, textRight, captionY + captionHeight * 0.5f);
-        if (spawnWidth > 0f)
-        {
-            zoneRight -= spawnWidth + 6f * scale;
-        }
-
-        using (Fonts.PushCaption())
-        {
-            TextDraw.At(TextDraw.Truncate(MarkBadges.ZoneLabel(markIndex), zoneRight - textX), new Vector2(textX, captionY), Styling.TextDim);
-        }
-
-        if (!addHovered && MarkBadges.HasTooltip(markIndex, mark.Rank, state) && Hit.HoveringRect(min, end))
-        {
-            MarkBadges.DrawTooltip(markIndex, name, mark.Rank, state);
-        }
-
+        MarkBadges.DrawNameAndZone(HuntMarkRegistry.IndexOf(mark.NameId), mark.Rank, min.X + padX, rightX - slot - 8f * scale, midY, CellLineGap, CellBadgeGap,
+            listed, !addHovered, min, end);
         return listed;
     }
 

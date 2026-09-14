@@ -1,5 +1,6 @@
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Kills;
+using AutoHuntGrinder.Core.Marks;
 using ECommons.DalamudServices;
 
 namespace AutoHuntGrinder.Core.Custom;
@@ -171,8 +172,13 @@ internal static class CustomMobList
         Configuration.SaveDebounced();
     }
 
+    // A hunt mark spawns only in the zone that lists it, whatever other zones the spawn table knows its name in, so an
+    // unpinned one is held there; 0 leaves the zone to the planner.
+    public static uint SearchTerritory(CustomMobEntry entry)
+        => entry.PinnedTerritoryId != 0 ? entry.PinnedTerritoryId : HuntMarkRegistry.SpawnTerritoryOf(entry.NameId);
+
     private static HuntObjective ObjectiveFor(CustomMobEntry entry, int index)
-        => new(ObjectiveSource.Custom, (ushort)index, entry.NameId, entry.PinnedTerritoryId, entry.Needed, entry.Killed);
+        => new(ObjectiveSource.Custom, (ushort)index, entry.NameId, SearchTerritory(entry), entry.Needed, entry.Killed);
 
     private static bool InRange(int index) => (uint)index < (uint)Entries.Count;
 }

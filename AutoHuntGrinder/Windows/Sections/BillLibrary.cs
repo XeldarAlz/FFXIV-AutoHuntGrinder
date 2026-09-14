@@ -125,12 +125,9 @@ internal static class BillLibrary
             return;
         }
 
-        var scale = ImGuiHelpers.GlobalScale;
-        var origin = ImGui.GetCursorScreenPos();
-        var labelSize = TextDraw.SmallCapsSize(label);
-        TextDraw.SmallCaps(label, new Vector2(origin.X + 2f * scale, origin.Y), Styling.TextMuted);
-        ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, labelSize.Y + 6f * scale));
+        GroupLabel.Draw(label, extraBelow: 6f);
 
+        var scale = ImGuiHelpers.GlobalScale;
         var gap = Gap * scale;
         var avail = ImGui.GetContentRegionAvail().X;
         var columns = Math.Max(1, (int)MathF.Floor((avail + gap) / (Layout.BillCardMinWidth * scale + gap)));

@@ -16,12 +16,15 @@ internal static class HuntMarkBrowser
     private const float Gap = 8f;
     private const float FilterGap = 10f;
     private const float ExpansionWidth = 200f;
+    private const float SearchMinWidth = 200f;
     private const float ChipPadX = 12f;
     private const float ChipMarkRadius = 7f;
     private const float ChipLabelGap = 8f;
     private const float RowHeight = 56f;
     private const float RowMinWidth = 300f;
     private const float RowPadX = 12f;
+    private const float RowLineGap = 3f;
+    private const float RowBadgeGap = 8f;
     private const float ExpansionHeaderSpace = 10f;
     private const float ZoneHeaderSpace = 4f;
     private const int AllExpansions = 0;
@@ -47,7 +50,7 @@ internal static class HuntMarkBrowser
     private static string query = string.Empty;
     private static string filteredQuery = string.Empty;
     private static string noMatchesText = string.Empty;
-    private static int rankMask = RankBit(HuntMarkRank.B) | RankBit(HuntMarkRank.A) | RankBit(HuntMarkRank.S);
+    private static int rankMask = HuntMarkRegistry.RankBit(HuntMarkRank.B) | HuntMarkRegistry.RankBit(HuntMarkRank.A) | HuntMarkRegistry.RankBit(HuntMarkRank.S);
     private static int filteredRankMask = NotFiltered;
     private static int expansionIndex = AllExpansions;
     private static int filteredExpansionIndex = NotFiltered;
@@ -63,13 +66,23 @@ internal static class HuntMarkBrowser
         DrawResults(running);
     }
 
+    // A narrow page stacks the dropdown under the search box instead of squeezing the box beside it.
     private static void DrawSearchRow()
     {
         var scale = ImGuiHelpers.GlobalScale;
-        var origin = ImGui.GetCursorScreenPos();
         var available = ImGui.GetContentRegionAvail().X;
         var dropdownWidth = ExpansionWidth * scale;
-        SearchField.Draw(SearchId, Loc.T(L.HuntMarks.SearchHint), ref query, ref searchFocused, available - dropdownWidth - FilterGap * scale);
+        var searchWidth = available - dropdownWidth - FilterGap * scale;
+        var hint = Loc.T(L.HuntMarks.SearchHint);
+        if (searchWidth < SearchMinWidth * scale)
+        {
+            SearchField.Draw(SearchId, hint, ref query, ref searchFocused, available);
+            Dropdown.Draw(ExpansionId, ExpansionOptions(), ref expansionIndex, MathF.Min(ExpansionWidth, available / scale));
+            return;
+        }
+
+        var origin = ImGui.GetCursorScreenPos();
+        SearchField.Draw(SearchId, hint, ref query, ref searchFocused, searchWidth);
         var height = ImGui.GetItemRectSize().Y;
 
         ImGui.SetCursorScreenPos(new Vector2(origin.X + available - dropdownWidth, origin.Y + (height - ImGui.GetFrameHeight()) * 0.5f));
@@ -79,35 +92,51 @@ internal static class HuntMarkBrowser
         ImGui.Dummy(new Vector2(available, height));
     }
 
+    // Chips wrap on a narrow page, and the count drops under them once it no longer fits beside the last one.
     private static void DrawRankRow()
     {
         var scale = ImGuiHelpers.GlobalScale;
         var origin = ImGui.GetCursorScreenPos();
         var available = ImGui.GetContentRegionAvail().X;
+        var right = origin.X + available;
         var height = Layout.ChipHeight * scale;
+        var gap = Gap * scale;
         var x = origin.X;
+        var y = origin.Y;
         for (var index = 0; index < ranks.Length; index++)
         {
             var width = ChipWidth(index);
-            ImGui.SetCursorScreenPos(new Vector2(x, origin.Y));
-            if (DrawChip(index, new Vector2(width, height)))
+            if (x > origin.X && x + width > right)
             {
-                rankMask ^= RankBit(ranks[index]);
+                x = origin.X;
+                y += height + gap;
             }
 
-            x += width + Gap * scale;
+            ImGui.SetCursorScreenPos(new Vector2(x, y));
+            if (DrawChip(index, new Vector2(width, height)))
+            {
+                rankMask ^= HuntMarkRegistry.RankBit(ranks[index]);
+            }
+
+            x += width + gap;
         }
 
         Refresh();
+        var bottom = y + height;
         using (Fonts.PushCaption())
         {
             var count = countText.Get(resultCount, static key => Loc.Plural(L.HuntMarks.Count, (int)key));
             var countSize = TextDraw.Measure(count);
-            TextDraw.At(count, new Vector2(origin.X + available - countSize.X, origin.Y + (height - countSize.Y) * 0.5f), Styling.TextDim);
+            var besideChips = x - gap + FilterGap * scale + countSize.X <= right;
+            var countPosition = besideChips
+                ? new Vector2(right - countSize.X, y + (height - countSize.Y) * 0.5f)
+                : new Vector2(origin.X + 2f * scale, bottom + gap);
+            TextDraw.At(count, countPosition, Styling.TextDim);
+            bottom = MathF.Max(bottom, countPosition.Y + countSize.Y);
         }
 
         ImGui.SetCursorScreenPos(origin);
-        ImGui.Dummy(new Vector2(available, height));
+        ImGui.Dummy(new Vector2(available, bottom - origin.Y));
     }
 
     private static float ChipWidth(int index)
@@ -119,7 +148,7 @@ internal static class HuntMarkBrowser
     private static bool DrawChip(int index, Vector2 size)
     {
         var rank = ranks[index];
-        var on = (rankMask & RankBit(rank)) != 0;
+        var on = (rankMask & HuntMarkRegistry.RankBit(rank)) != 0;
         var origin = ImGui.GetCursorScreenPos();
         var end = origin + size;
 
@@ -190,24 +219,14 @@ internal static class HuntMarkBrowser
         filteredExpansionIndex = expansionIndex;
         filteredLanguage = language;
 
-        var marks = HuntMarkRegistry.Marks;
-        if (results.Length < marks.Length)
+        var markCount = HuntMarkRegistry.Marks.Length;
+        if (results.Length < markCount)
         {
-            results = new int[marks.Length];
+            results = new int[markCount];
         }
 
         ExpansionKind? expansion = expansionIndex == AllExpansions ? null : expansions[expansionIndex - 1];
-        var found = HuntMarkRegistry.Filter(null, expansion, query, results);
-        resultCount = 0;
-        for (var position = 0; position < found; position++)
-        {
-            var markIndex = results[position];
-            if ((rankMask & RankBit(marks[markIndex].Rank)) != 0)
-            {
-                results[resultCount++] = markIndex;
-            }
-        }
-
+        resultCount = HuntMarkRegistry.Filter(rankMask, expansion, query, results);
         var trimmed = query.Trim();
         noMatchesText = resultCount == 0 && trimmed.Length > 0 ? Loc.T(L.Common.NoMatches, trimmed) : string.Empty;
     }
@@ -241,7 +260,7 @@ internal static class HuntMarkBrowser
                 var mark = marks[markIndex];
                 if (groupByExpansion && (int)mark.Expansion != previousExpansion)
                 {
-                    DrawExpansionHeader(mark.Expansion, previousExpansion != NotFiltered);
+                    GroupLabel.Draw(ExpansionLabels.Name(mark.Expansion), previousExpansion != NotFiltered ? ExpansionHeaderSpace : 0f);
                     previousExpansion = (int)mark.Expansion;
                 }
 
@@ -264,20 +283,6 @@ internal static class HuntMarkBrowser
         }
 
         ImGui.PopID();
-    }
-
-    private static void DrawExpansionHeader(ExpansionKind expansion, bool spaced)
-    {
-        if (spaced)
-        {
-            Styling.VSpace(ExpansionHeaderSpace);
-        }
-
-        var origin = ImGui.GetCursorScreenPos();
-        var label = ExpansionLabels.Name(expansion);
-        var labelSize = TextDraw.SmallCapsSize(label);
-        TextDraw.SmallCaps(label, new Vector2(origin.X + 2f * ImGuiHelpers.GlobalScale, origin.Y), Styling.TextMuted);
-        ImGui.Dummy(new Vector2(ImGui.GetContentRegionAvail().X, labelSize.Y));
     }
 
     private static void DrawZoneHeader(int markIndex, bool spaced)
@@ -326,38 +331,10 @@ internal static class HuntMarkBrowser
             CustomMobList.Add(mark.NameId);
         }
 
-        var textRight = rightX - addSlot - 10f * scale;
-        var lineHeight = ImGui.GetTextLineHeight();
-        float captionHeight;
-        using (Fonts.PushCaption())
-        {
-            captionHeight = ImGui.GetTextLineHeight();
-        }
-
-        var top = midY - (lineHeight + 3f * scale + captionHeight) * 0.5f;
-        var name = HuntMarkRegistry.NameAt(markIndex);
-        TextDraw.At(TextDraw.Truncate(name, textRight - textX), new Vector2(textX, top), listed ? Styling.TextSecondary : Styling.TextStrong);
-
-        var captionY = top + lineHeight + 3f * scale;
-        var state = MarkBadges.SpawnStateAt(markIndex);
-        var zoneRight = textRight;
-        var spawnWidth = MarkBadges.DrawSpawn(drawList, state, textRight, captionY + captionHeight * 0.5f);
-        if (spawnWidth > 0f)
-        {
-            zoneRight -= spawnWidth + 8f * scale;
-        }
-
-        using (Fonts.PushCaption())
-        {
-            TextDraw.At(TextDraw.Truncate(MarkBadges.ZoneLabel(markIndex), zoneRight - textX), new Vector2(textX, captionY), Styling.TextDim);
-        }
-
+        MarkBadges.DrawNameAndZone(markIndex, mark.Rank, textX, rightX - addSlot - 10f * scale, midY, RowLineGap, RowBadgeGap, listed, !addHovered,
+            origin, end);
         ImGui.SetCursorScreenPos(origin);
         ImGui.Dummy(size);
-        if (!addHovered && MarkBadges.HasTooltip(markIndex, mark.Rank, state) && Hit.HoveringRect(origin, end))
-        {
-            MarkBadges.DrawTooltip(markIndex, name, mark.Rank, state);
-        }
     }
 
     // The expansion-wide marks form one group after the zones of their expansion, whatever zone first listed them.
@@ -384,6 +361,4 @@ internal static class HuntMarkBrowser
         optionsLanguage = language;
         return options;
     }
-
-    private static int RankBit(HuntMarkRank rank) => 1 << (int)rank;
 }

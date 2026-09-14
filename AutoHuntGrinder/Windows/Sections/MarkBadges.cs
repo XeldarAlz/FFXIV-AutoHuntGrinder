@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Core.Marks;
 using AutoHuntGrinder.Core.Spawns;
@@ -9,13 +10,6 @@ using System.Numerics;
 
 namespace AutoHuntGrinder.Windows.Sections;
 
-internal enum MarkSpawnState : byte
-{
-    Points,
-    FateOnly,
-    NoData,
-}
-
 internal static class MarkBadges
 {
     private const float RankSize = 22f;
@@ -26,7 +20,7 @@ internal static class MarkBadges
     private const string LetterA = "A";
     private const string LetterS = "S";
 
-    private static MarkSpawnState[]? spawnStates;
+    private static SpawnCoverage[]? coverages;
 
     public static Vector4 RankColor(HuntMarkRank rank) => rank switch
     {
@@ -66,51 +60,75 @@ internal static class MarkBadges
     public static string ZoneLabel(int markIndex)
         => HuntMarkRegistry.IsExpansionWideAt(markIndex) ? Loc.T(L.CustomList.AnyZone) : HuntMarkRegistry.ZoneNameAt(markIndex);
 
-    // Spawn data never changes while the plugin runs, so each mark's state is looked up once.
-    public static MarkSpawnState SpawnStateAt(int markIndex)
+    // Spawn data never changes while the plugin runs, so each mark's coverage is looked up once.
+    public static SpawnCoverage CoverageAt(int markIndex)
     {
         var marks = HuntMarkRegistry.Marks;
         if ((uint)markIndex >= (uint)marks.Length)
         {
-            return MarkSpawnState.NoData;
+            return SpawnCoverage.NoData;
         }
 
-        spawnStates ??= BuildSpawnStates(marks);
-        return spawnStates[markIndex];
+        coverages ??= BuildCoverages(marks);
+        return coverages[markIndex];
     }
 
-    public static float DrawSpawn(ImDrawListPtr drawList, MarkSpawnState state, float rightX, float midY) => state switch
+    // Points stands for any spawn data a search can use, area labels included; territoryId 0 asks about every zone.
+    public static SpawnCoverage CoverageIn(uint nameId, uint territoryId)
     {
-        MarkSpawnState.FateOnly => Badge.Draw(drawList, Loc.T(L.HuntingLog.BadgeFateOnly), Styling.AccentNebula, rightX, midY),
-        MarkSpawnState.NoData => Badge.Draw(drawList, Loc.T(L.HuntingLog.BadgeNoSpawns), Styling.AccentRose, rightX, midY),
-        _ => 0f,
-    };
-
-    public static bool HasTooltip(int markIndex, HuntMarkRank rank, MarkSpawnState state)
-        => rank == HuntMarkRank.S || state != MarkSpawnState.Points || HuntMarkRegistry.IsExpansionWideAt(markIndex);
-
-    public static void DrawTooltip(int markIndex, string name, HuntMarkRank rank, MarkSpawnState state)
-    {
-        using (Tooltip.Begin())
+        if (MobSpawns.IsSearchable(nameId, territoryId))
         {
-            Tooltip.Text(name, Styling.TextStrong);
-            if (HuntMarkRegistry.IsExpansionWideAt(markIndex))
-            {
-                Tooltip.Text(Loc.T(L.HuntMarks.ExpansionWideHelp), Styling.Lighten(RankColor(rank), 0.25f));
-            }
-            else if (rank == HuntMarkRank.S)
-            {
-                Tooltip.Text(Loc.T(L.HuntMarks.SRankHelp), Styling.Lighten(RankColor(rank), 0.25f));
-            }
+            return SpawnCoverage.Points;
+        }
 
-            if (state == MarkSpawnState.FateOnly)
-            {
-                Tooltip.Text(Loc.T(L.CustomList.FateOnlyHelp), Styling.TextDim);
-            }
-            else if (state == MarkSpawnState.NoData)
-            {
-                Tooltip.Text(Loc.T(L.HuntMarks.NoSpawnsHelp), Styling.TextDim);
-            }
+        return MobSpawns.IsFateOnly(nameId, territoryId) ? SpawnCoverage.FateOnly : SpawnCoverage.NoData;
+    }
+
+    // An expansion-wide mark's note already tells of its trigger, so it stands in for the S rank one.
+    public static LocString? RankHelp(int markIndex, HuntMarkRank rank)
+    {
+        if (HuntMarkRegistry.IsExpansionWideAt(markIndex))
+        {
+            return L.HuntMarks.ExpansionWideHelp;
+        }
+
+        return rank == HuntMarkRank.S ? L.HuntMarks.SRankHelp : null;
+    }
+
+    // Gaps are unscaled. The tooltip shows while the pointer is inside the hover rectangle, unless tooltip is false
+    // because the pointer is on the card's own button.
+    public static void DrawNameAndZone(int markIndex, HuntMarkRank rank, float textX, float textRight, float midY, float lineGap, float badgeGap,
+        bool listed, bool tooltip, Vector2 hoverMin, Vector2 hoverMax)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var lineHeight = ImGui.GetTextLineHeight();
+        float captionHeight;
+        using (Fonts.PushCaption())
+        {
+            captionHeight = ImGui.GetTextLineHeight();
+        }
+
+        var top = midY - (lineHeight + lineGap * scale + captionHeight) * 0.5f;
+        var name = HuntMarkRegistry.NameAt(markIndex);
+        TextDraw.At(TextDraw.Truncate(name, textRight - textX), new Vector2(textX, top), listed ? Styling.TextSecondary : Styling.TextStrong);
+
+        var captionY = top + lineHeight + lineGap * scale;
+        var coverage = CoverageAt(markIndex);
+        var zoneRight = textRight;
+        var badgeWidth = SpawnBadge.Draw(ImGui.GetWindowDrawList(), coverage, textRight, captionY + captionHeight * 0.5f);
+        if (badgeWidth > 0f)
+        {
+            zoneRight -= badgeWidth + badgeGap * scale;
+        }
+
+        using (Fonts.PushCaption())
+        {
+            TextDraw.At(TextDraw.Truncate(ZoneLabel(markIndex), zoneRight - textX), new Vector2(textX, captionY), Styling.TextDim);
+        }
+
+        if (tooltip && HasTooltip(markIndex, rank, coverage) && Hit.HoveringRect(hoverMin, hoverMax))
+        {
+            DrawTooltip(markIndex, name, rank, coverage);
         }
     }
 
@@ -134,7 +152,7 @@ internal static class MarkBadges
         return clicked;
     }
 
-    public static float DrawInList(float rightX, float midY)
+    public static void DrawInList(float rightX, float midY)
     {
         var label = Loc.T(L.HuntMarks.InList);
         var iconSize = TextDraw.IconSize(FontAwesomeIcon.Check);
@@ -145,7 +163,6 @@ internal static class MarkBadges
             TextDraw.At(label, new Vector2(labelX, midY - labelSize.Y * 0.5f), Styling.AccentMint);
             var iconX = labelX - InListGap * ImGuiHelpers.GlobalScale - iconSize.X;
             TextDraw.Icon(FontAwesomeIcon.Check, new Vector2(iconX, midY - iconSize.Y * 0.5f), Styling.AccentMint);
-            return rightX - iconX;
         }
     }
 
@@ -158,24 +175,38 @@ internal static class MarkBadges
         }
     }
 
-    private static MarkSpawnState[] BuildSpawnStates(ReadOnlySpan<HuntMark> marks)
-    {
-        var states = new MarkSpawnState[marks.Length];
-        for (var index = 0; index < marks.Length; index++)
-        {
-            states[index] = SpawnStateOf(marks[index].NameId, HuntMarkRegistry.SpawnTerritoryAt(index));
-        }
+    private static bool HasTooltip(int markIndex, HuntMarkRank rank, SpawnCoverage coverage)
+        => coverage != SpawnCoverage.Points || RankHelp(markIndex, rank).HasValue;
 
-        return states;
+    private static void DrawTooltip(int markIndex, string name, HuntMarkRank rank, SpawnCoverage coverage)
+    {
+        using (Tooltip.Begin())
+        {
+            Tooltip.Text(name, Styling.TextStrong);
+            if (RankHelp(markIndex, rank) is { } help)
+            {
+                Tooltip.Text(Loc.T(help), Styling.Lighten(RankColor(rank), 0.25f));
+            }
+
+            if (coverage == SpawnCoverage.FateOnly)
+            {
+                Tooltip.Text(Loc.T(L.CustomList.FateOnlyHelp), Styling.TextDim);
+            }
+            else if (coverage == SpawnCoverage.NoData)
+            {
+                Tooltip.Text(Loc.T(L.HuntMarks.NoSpawnsHelp), Styling.TextDim);
+            }
+        }
     }
 
-    private static MarkSpawnState SpawnStateOf(uint nameId, uint territoryId)
+    private static SpawnCoverage[] BuildCoverages(ReadOnlySpan<HuntMark> marks)
     {
-        if (MobSpawns.IsSearchable(nameId, territoryId))
+        var built = new SpawnCoverage[marks.Length];
+        for (var index = 0; index < marks.Length; index++)
         {
-            return MarkSpawnState.Points;
+            built[index] = CoverageIn(marks[index].NameId, HuntMarkRegistry.SpawnTerritoryAt(index));
         }
 
-        return MobSpawns.IsFateOnly(nameId, territoryId) ? MarkSpawnState.FateOnly : MarkSpawnState.NoData;
+        return built;
     }
 }

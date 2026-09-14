@@ -198,7 +198,6 @@ internal static class RunningPanel
         return y + 10f * scale;
     }
 
-    // Returns the width the badge and its gap take, 0 when the target is not a hunt mark.
     private static float DrawRankBadge(HuntMarkRank? rank, float leftX, float midY)
     {
         if (rank is not { } markRank)

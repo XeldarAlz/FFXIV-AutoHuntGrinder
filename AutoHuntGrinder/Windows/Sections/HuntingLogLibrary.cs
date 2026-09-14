@@ -11,7 +11,6 @@ using Dalamud.Interface.Utility.Raii;
 using ECommons.DalamudServices;
 using Lumina.Excel.Sheets;
 using System.Numerics;
-using ClientAchievementState = FFXIVClientStructs.FFXIV.Client.Game.UI.Achievement.AchievementState;
 
 namespace AutoHuntGrinder.Windows.Sections;
 
@@ -50,7 +49,6 @@ internal static class HuntingLogLibrary
     private static byte builtRank = FollowCurrentRank;
     private static LanguageInfo? builtLanguage;
     private static int rowCount;
-    private static bool checkRefused;
 
     private enum RankState : byte { Done, Current, Locked }
 
@@ -640,10 +638,10 @@ internal static class HuntingLogLibrary
 
         var captionY = top + lineHeight + 3f * scale;
         var zoneRight = rightX;
-        var badge = BadgeFor(row.Coverage);
-        if (badge.Length > 0)
+        var badgeWidth = SpawnBadge.Draw(drawList, row.Coverage, rightX, captionY + captionHeight * 0.5f);
+        if (badgeWidth > 0f)
         {
-            zoneRight -= Badge.Draw(drawList, badge, BadgeColor(row.Coverage), rightX, captionY + captionHeight * 0.5f) + 8f * scale;
+            zoneRight -= badgeWidth + 8f * scale;
         }
 
         using (Fonts.PushCaption())
@@ -657,28 +655,11 @@ internal static class HuntingLogLibrary
         Paint.Bar(drawList, new Vector2(origin.X + inset, end.Y - barHeight - 4f * scale), size.X - inset * 2f, barHeight, fraction, accent);
 
         ImGui.Dummy(size);
-        if (badge.Length > 0 && Hit.HoveringRect(origin, end))
+        if (badgeWidth > 0f && Hit.HoveringRect(origin, end))
         {
             Tooltip.Show(BadgeHelp(row.Coverage));
         }
     }
-
-    private static string BadgeFor(SpawnCoverage coverage) => coverage switch
-    {
-        SpawnCoverage.InDuty => Loc.T(L.HuntingLog.BadgeInDuty),
-        SpawnCoverage.AreaOnly => Loc.T(L.HuntingLog.BadgeAreaOnly),
-        SpawnCoverage.FateOnly => Loc.T(L.HuntingLog.BadgeFateOnly),
-        SpawnCoverage.NoData => Loc.T(L.HuntingLog.BadgeNoSpawns),
-        _ => string.Empty,
-    };
-
-    private static Vector4 BadgeColor(SpawnCoverage coverage) => coverage switch
-    {
-        SpawnCoverage.InDuty => Styling.AccentAmber,
-        SpawnCoverage.AreaOnly => Styling.AccentBlue,
-        SpawnCoverage.FateOnly => Styling.AccentNebula,
-        _ => Styling.AccentRose,
-    };
 
     private static string BadgeHelp(SpawnCoverage coverage) => coverage switch
     {
@@ -741,25 +722,16 @@ internal static class HuntingLogLibrary
         ImGui.Dummy(size);
     }
 
-    // The completion list is a server round trip; the reader rations the requests and this button only asks for one.
     private static float DrawCheckButton(float rightX, float midY)
     {
         var scale = ImGuiHelpers.GlobalScale;
-        var loadState = AchievementReader.LoadState();
-        var requested = loadState == ClientAchievementState.Requested;
-        if (loadState != ClientAchievementState.Invalid)
-        {
-            checkRefused = false;
-        }
-
-        var label = Loc.T(requested ? L.HuntingLog.Checking : L.HuntingLog.Check);
-        var width = PillButton.Width(label, FontAwesomeIcon.Sync);
+        var check = AchievementCheck.Read();
+        var width = PillButton.Width(check.Label, AchievementCheck.Icon);
         ImGui.SetCursorScreenPos(new Vector2(rightX - width, midY - CheckButtonHeight * scale * 0.5f));
-        var tooltip = Loc.T(checkRefused ? L.HuntingLog.CheckWait : L.HuntingLog.CheckHelp);
-        if (PillButton.Draw("##ahg_log_check", label, Styling.AccentGlow, PillButton.Emphasis.Tinted, FontAwesomeIcon.Sync,
-                enabled: loadState == ClientAchievementState.Invalid, height: CheckButtonHeight, tooltip: tooltip))
+        if (PillButton.Draw("##ahg_log_check", check.Label, Styling.AccentGlow, PillButton.Emphasis.Tinted, AchievementCheck.Icon,
+                enabled: check.Enabled, height: CheckButtonHeight, tooltip: check.Tooltip))
         {
-            checkRefused = !AchievementReader.RequestLoad();
+            AchievementCheck.Press();
         }
 
         return width;

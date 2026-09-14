@@ -8,7 +8,8 @@ namespace AutoHuntGrinder.Core.Achievements;
 // Achievements window opens. Both kinds of request are server round trips, so each one is rationed.
 internal static unsafe class AchievementReader
 {
-    private const long LoadRetryMs = 30_000;
+    public const long LoadRetryMs = 30_000;
+
     private const long ProgressTimeoutMs = 5_000;
 
     private static long loadRequestedAtTick;
@@ -107,6 +108,13 @@ internal static unsafe class AchievementReader
         }
 
         return true;
+    }
+
+    // The achievement whose progress answer is still due; 0 once it came back or was dropped unanswered.
+    public static uint AwaitedProgress()
+    {
+        var achievement = Instance();
+        return achievement != null && ProgressInFlight(achievement, Environment.TickCount64) ? progressRequestId : 0;
     }
 
     public static ClientAchievementState? LoadState()

@@ -5,7 +5,6 @@ using AutoHuntGrinder.Core.Spawns;
 using AutoHuntGrinder.Core.Travel;
 using ECommons.DalamudServices;
 using System.Text;
-using ClientAchievementState = FFXIVClientStructs.FFXIV.Client.Game.UI.Achievement.AchievementState;
 
 namespace AutoHuntGrinder.Core.Debug;
 
@@ -14,7 +13,7 @@ internal static class HuntMarkDumper
     public static void Dump()
     {
         DumpRegistry();
-        DumpAchievementState();
+        AchievementDump.LogLoadState(Log);
         DumpAchievements();
         Svc.Chat.Print($"{AhgConstants.LogPrefix} Hunt mark dump written to the plugin log (/xllog).");
     }
@@ -22,7 +21,7 @@ internal static class HuntMarkDumper
     private static void DumpRegistry()
     {
         var marks = HuntMarkRegistry.Marks;
-        Log($"registry: {marks.Length} marks, {LinkedCount(marks)} of them count toward a Mark achievement");
+        Log($"registry: {marks.Length} marks, {LinkedCount()} of them count toward a Mark achievement");
         for (var expansion = ExpansionKind.ARR; expansion <= ExpansionKind.DT; expansion++)
         {
             var line = new StringBuilder(expansion.ShortName()).Append(": ").Append(ZoneCount(expansion)).Append(" zones;");
@@ -100,32 +99,17 @@ internal static class HuntMarkDumper
         return zones;
     }
 
-    private static int LinkedCount(ReadOnlySpan<HuntMark> marks)
+    // The achievements' zones never overlap and each asks for one rank, so no mark is counted twice.
+    private static int LinkedCount()
     {
+        var achievements = MarkAchievements.All;
         var linked = 0;
-        for (var index = 0; index < marks.Length; index++)
+        for (var index = 0; index < achievements.Length; index++)
         {
-            if (!MarkAchievements.ForMark(marks[index].NameId).IsEmpty)
-            {
-                linked++;
-            }
+            linked += achievements[index].MarkCount;
         }
 
         return linked;
-    }
-
-    private static void DumpAchievementState()
-    {
-        var state = AchievementReader.LoadState();
-        Log($"achievements: state {state?.ToString() ?? "unreadable"}, last load request {AchievementReader.MillisecondsSinceLoadRequest} ms ago (-1 = never)");
-        if (state != ClientAchievementState.Invalid)
-        {
-            return;
-        }
-
-        Log(AchievementReader.RequestLoad()
-            ? "achievements: requested the completion list; run the dump again in a few seconds to see it load"
-            : "achievements: a load request went out under 30 s ago; not asking again yet");
     }
 
     private static void DumpAchievements()

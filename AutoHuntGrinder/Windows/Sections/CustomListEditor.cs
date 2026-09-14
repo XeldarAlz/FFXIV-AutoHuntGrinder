@@ -1,4 +1,5 @@
 using AutoHuntGrinder.Core.Custom;
+using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Localization;
 using AutoHuntGrinder.Core.Marks;
 using AutoHuntGrinder.Core.Spawns;
@@ -389,15 +390,17 @@ internal static class CustomListEditor
             DrawZone(configuration, entry, new Vector2(controlsX + StepperWidth * scale + Gap * scale, controlsY), running);
         }
 
-        if (MobSpawns.IsFateOnly(entry.NameId, entry.PinnedTerritoryId))
+        var coverage = MarkBadges.CoverageIn(entry.NameId, CustomMobList.SearchTerritory(entry));
+        if (coverage != SpawnCoverage.Points)
         {
-            x -= DrawFateOnlyBadge(drawList, x, midY, line) + 10f * scale;
+            x -= DrawSpawnBadge(drawList, coverage, x, midY, line) + 10f * scale;
         }
 
         var nameX = controlsX;
-        if (HuntMarkRegistry.TryGet(entry.NameId, out var mark))
+        var markIndex = HuntMarkRegistry.IndexOf(entry.NameId);
+        if (markIndex != HuntMarkRegistry.NotFound)
         {
-            nameX += DrawRankBadge(drawList, mark.Rank, controlsX, midY) + 8f * scale;
+            nameX += DrawRankBadge(drawList, markIndex, controlsX, midY) + 8f * scale;
         }
 
         var name = TextDraw.Truncate(CustomMobCatalog.NameOf(entry.NameId), x - nameX);
@@ -415,23 +418,26 @@ internal static class CustomListEditor
         return action;
     }
 
-    private static float DrawFateOnlyBadge(ImDrawListPtr drawList, float rightX, float midY, float line)
+    // Catalog mobs always have spawn data, so only a hunt mark can read as having none.
+    private static float DrawSpawnBadge(ImDrawListPtr drawList, SpawnCoverage coverage, float rightX, float midY, float line)
     {
-        var width = Badge.Draw(drawList, Loc.T(L.HuntingLog.BadgeFateOnly), Styling.AccentNebula, rightX, midY);
+        var width = SpawnBadge.Draw(drawList, coverage, rightX, midY);
         if (Hit.HoveringRect(new Vector2(rightX - width, midY - line * 0.5f), new Vector2(rightX, midY + line * 0.5f)))
         {
-            Tooltip.Show(Loc.T(L.CustomList.FateOnlyHelp));
+            Tooltip.Show(Loc.T(coverage == SpawnCoverage.FateOnly ? L.CustomList.FateOnlyHelp : L.HuntMarks.NoSpawnsHelp));
         }
 
         return width;
     }
 
-    private static float DrawRankBadge(ImDrawListPtr drawList, HuntMarkRank rank, float leftX, float midY)
+    private static float DrawRankBadge(ImDrawListPtr drawList, int markIndex, float leftX, float midY)
     {
+        var rank = HuntMarkRegistry.Marks[markIndex].Rank;
         var width = MarkBadges.DrawRank(drawList, rank, leftX, midY);
-        if (rank == HuntMarkRank.S && Hit.HoveringRect(new Vector2(leftX, midY - width * 0.5f), new Vector2(leftX + width, midY + width * 0.5f)))
+        if (MarkBadges.RankHelp(markIndex, rank) is { } help
+            && Hit.HoveringRect(new Vector2(leftX, midY - width * 0.5f), new Vector2(leftX + width, midY + width * 0.5f)))
         {
-            Tooltip.Show(Loc.T(L.HuntMarks.SRankHelp));
+            Tooltip.Show(Loc.T(help));
         }
 
         return width;

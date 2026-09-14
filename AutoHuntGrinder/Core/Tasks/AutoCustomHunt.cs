@@ -1,6 +1,7 @@
 using AutoHuntGrinder.Core.Custom;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Marks;
+using AutoHuntGrinder.Core.Travel;
 using ECommons.DalamudServices;
 using System.Threading.Tasks;
 
@@ -96,7 +97,7 @@ internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progr
             }
 
             objectives.RemoveAt(objectiveIndex);
-            var reason = objective.TerritoryId != 0 ? "has no known spawn points outside FATEs in its pinned zone" : "has no known spawn points outside FATEs";
+            var reason = objective.TerritoryId != 0 ? $"has no known spawn points outside FATEs in {TerritoryNames.Of(objective.TerritoryId)}" : "has no known spawn points outside FATEs";
             if (NoteLeftOut(objective, reason))
             {
                 leftOutNames.Add(ObjectiveProgress.Name(objective));
@@ -232,7 +233,7 @@ internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progr
         }
 
         trackingOwner = null;
-        Plugin.Kills.ClearInterest();
+        Plugin.Kills.ClearTracking();
         CustomMobList.End();
     }
 }

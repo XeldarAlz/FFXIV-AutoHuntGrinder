@@ -55,55 +55,11 @@ internal static class MarkAchievements
     public static ReadOnlySpan<HuntMark> Marks(in MarkAchievement achievement)
         => new(Data.Marks, achievement.FirstMark, achievement.MarkCount);
 
-    public static ReadOnlySpan<MarkAchievement> ForMark(uint nameId)
-    {
-        var data = Data;
-        var nameIds = data.LinkNameIds.AsSpan();
-        var found = nameIds.BinarySearch(nameId);
-        if (found < 0)
-        {
-            return [];
-        }
-
-        var first = found;
-        while (first > 0 && nameIds[first - 1] == nameId)
-        {
-            first--;
-        }
-
-        var end = found + 1;
-        while (end < nameIds.Length && nameIds[end] == nameId)
-        {
-            end++;
-        }
-
-        return new ReadOnlySpan<MarkAchievement>(data.LinkAchievements, first, end - first);
-    }
-
-    public static bool TryGet(uint achievementId, out MarkAchievement achievement)
-    {
-        var achievements = Data.Achievements;
-        for (var index = 0; index < achievements.Length; index++)
-        {
-            if (achievements[index].AchievementId != achievementId)
-            {
-                continue;
-            }
-
-            achievement = achievements[index];
-            return true;
-        }
-
-        achievement = default;
-        return false;
-    }
-
     private static Resolved Resolve()
     {
         var sheet = Svc.Data.GetExcelSheet<Achievement>();
         var achievements = new List<MarkAchievement>(Sources.Length);
         var marks = new List<HuntMark>();
-        var links = new List<Link>();
         for (var sourceIndex = 0; sourceIndex < Sources.Length; sourceIndex++)
         {
             var source = Sources[sourceIndex];
@@ -123,26 +79,11 @@ internal static class MarkAchievements
                 continue;
             }
 
-            var achievement = new MarkAchievement(source.AchievementId, source.Rank, marks[firstMark].Expansion, row.Name.ExtractText(), row.Icon, (ushort)firstMark, (byte)markCount);
-            for (var markIndex = firstMark; markIndex < marks.Count; markIndex++)
-            {
-                links.Add(new Link(marks[markIndex].NameId, links.Count, achievement));
-            }
-
-            achievements.Add(achievement);
-        }
-
-        links.Sort(CompareLinks);
-        var linkNameIds = new uint[links.Count];
-        var linkAchievements = new MarkAchievement[links.Count];
-        for (var index = 0; index < links.Count; index++)
-        {
-            linkNameIds[index] = links[index].NameId;
-            linkAchievements[index] = links[index].Achievement;
+            achievements.Add(new MarkAchievement(source.AchievementId, source.Rank, marks[firstMark].Expansion, row.Name.ExtractText(), row.Icon, (ushort)firstMark, (byte)markCount));
         }
 
         Svc.Log.Info($"{AhgConstants.LogPrefix} Mark achievements: {achievements.Count} of {Sources.Length} resolved over {marks.Count} marks");
-        return new Resolved([.. achievements], [.. marks], linkNameIds, linkAchievements);
+        return new Resolved([.. achievements], [.. marks]);
     }
 
     private static void CollectMarks(in Source source, List<HuntMark> marks)
@@ -160,15 +101,7 @@ internal static class MarkAchievements
         }
     }
 
-    private static int CompareLinks(Link left, Link right)
-    {
-        var byName = left.NameId.CompareTo(right.NameId);
-        return byName != 0 ? byName : left.Order.CompareTo(right.Order);
-    }
-
     private readonly record struct Source(uint AchievementId, HuntMarkRank Rank, ushort[] Territories);
 
-    private readonly record struct Link(uint NameId, int Order, MarkAchievement Achievement);
-
-    private sealed record Resolved(MarkAchievement[] Achievements, HuntMark[] Marks, uint[] LinkNameIds, MarkAchievement[] LinkAchievements);
+    private sealed record Resolved(MarkAchievement[] Achievements, HuntMark[] Marks);
 }

@@ -63,9 +63,9 @@ public abstract partial class AutoCommon
 
             var scope = $"mark-fight#{engagement}";
             var fight = await FightMark(hunt, sighting, scope);
-            if (hunt.IsHuntMark && EndsHuntMarkSweep(fight))
+            if (hunt.IsHuntMark && EndsHuntMarkSweep(hunt, fight))
             {
-                return SettleHuntMarkSweep(hunt, sighting.GameObjectId, fight, scope);
+                return await SettleHuntMarkSweep(hunt, sighting.GameObjectId, fight, scope);
             }
 
             switch (fight)
@@ -73,7 +73,8 @@ public abstract partial class AutoCommon
                 case MarkFight.Counted:
                     hunt.UncountedKills = 0;
                     break;
-                case MarkFight.NotCounted:
+                // A hunt mark someone else finished credits nobody who never fought it; that is no failed credit.
+                case MarkFight.NotCounted when !hunt.IsHuntMark:
                     hunt.UncountedKills++;
                     break;
                 case MarkFight.Unreachable:
@@ -89,18 +90,28 @@ public abstract partial class AutoCommon
         return null;
     }
 
-    // A hunt mark is a single spawn. Gone without our kill counting, someone else finished it or it despawned; out of
-    // reach or left standing, the rest of the sweep would only find that same one again.
-    private MarkOutcome SettleHuntMarkSweep(MarkHuntContext hunt, ulong markId, MarkFight fight, string scope)
+    // A mark left standing still hits back, so whatever attacks is fought off here, where a knockout is charged to this
+    // mark and not to the next target. A fight that ran past the search clock was with a mark that was up, so the clock
+    // is not read: an unreachable mark stays unreachable, and only a gone one reads as not found.
+    private async Task<MarkOutcome> SettleHuntMarkSweep(MarkHuntContext hunt, ulong markId, MarkFight fight, string scope)
     {
-        if (CheckMarkState(hunt) is { } stop)
+        if (fight == MarkFight.Unreachable)
+        {
+            hunt.Ignore(markId);
+            if (Svc.Targets.Target?.GameObjectId == markId)
+            {
+                Svc.Targets.Target = null;
+            }
+        }
+
+        await ClearMarkAggro(scope);
+        if (CheckMarkStanding(hunt) is { } stop)
         {
             return stop;
         }
 
         if (fight == MarkFight.Unreachable)
         {
-            hunt.Ignore(markId);
             Diag($"{scope}: {hunt.Name} is up but could not be reached or finished; ending this sweep");
             return MarkOutcome.Unreachable;
         }
@@ -109,7 +120,14 @@ public abstract partial class AutoCommon
         return MarkOutcome.NotFound;
     }
 
-    private static bool EndsHuntMarkSweep(MarkFight fight) => fight is MarkFight.NotCounted or MarkFight.Lost or MarkFight.Unreachable;
+    // A mark out of reach or left standing would only be found again. One gone without our kill ends the sweep unless it
+    // comes back within it.
+    private static bool EndsHuntMarkSweep(MarkHuntContext hunt, MarkFight fight) => fight switch
+    {
+        MarkFight.Unreachable => true,
+        MarkFight.NotCounted or MarkFight.Lost => !hunt.RespawnsWithinSearch,
+        _ => false,
+    };
 
     private async Task<MarkFight> FightMark(MarkHuntContext hunt, MarkSighting sighting, string scope)
     {
