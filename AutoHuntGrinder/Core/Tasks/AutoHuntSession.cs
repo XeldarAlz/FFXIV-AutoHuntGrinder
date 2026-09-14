@@ -123,6 +123,10 @@ public sealed class AutoHuntSession
     internal bool UnhuntableReported;
     internal int HuntPassesCompleted;
 
+    // BNpcName ids of hunt marks a custom run looked for and did not find up; like mobs without spawn data, they are left
+    // to the player and do not hold back the after-run action.
+    internal HashSet<uint> MarksNotUp { get; } = [];
+
     public bool DidNothing
         => MarksKilled == 0 && BillsCompleted == 0 && AlliedSeals == 0 && CenturioSeals == 0 && Nuts == 0;
 

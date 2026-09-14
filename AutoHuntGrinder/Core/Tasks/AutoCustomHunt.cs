@@ -1,5 +1,6 @@
 using AutoHuntGrinder.Core.Custom;
 using AutoHuntGrinder.Core.Hunts;
+using AutoHuntGrinder.Core.Marks;
 using ECommons.DalamudServices;
 using System.Threading.Tasks;
 
@@ -14,6 +15,7 @@ internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progr
 
     private readonly List<HuntObjective> objectives = [];
     private readonly List<string> leftOutNames = [];
+    private readonly List<string> notUpNames = [];
     private uint[] interest = [];
 
     protected override async Task Execute()
@@ -133,18 +135,40 @@ internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progr
         Svc.Chat.Print($"{AhgConstants.LogPrefix} No spawn points outside FATEs are known for {string.Join(", ", leftOutNames)}, so the run leaves {(leftOutNames.Count == 1 ? "it" : "them")} to you.");
     }
 
-    // Mobs the run cannot hunt do not hold back the after-run action, as marks without spawn data do not in a bill run;
-    // a mob given up does.
+    // An A or S rank no sweep found is not up, and it stays down for hours or days, so the run does not look again.
+    private protected override bool LeavesForRun(in HuntObjective objective, string name, MarkOutcome outcome)
+    {
+        if (outcome != MarkOutcome.NotFound || !HuntMarkRegistry.TryGet(objective.NameId, out var mark) || mark.Rank == HuntMarkRank.B)
+        {
+            return false;
+        }
+
+        RunSession.MarksNotUp.Add(objective.NameId);
+        Svc.Chat.Print(mark.Rank == HuntMarkRank.S
+            ? $"{AhgConstants.LogPrefix} {name} was not found. S rank marks appear only after an in-game trigger, so the run skips it for the rest of this run."
+            : $"{AhgConstants.LogPrefix} {name} was not found. It may not be up, since A rank marks respawn over hours, so the run skips it for the rest of this run.");
+        return true;
+    }
+
+    // Mobs the run cannot hunt and hunt marks that were not up do not hold back the after-run action, as marks without
+    // spawn data do not in a bill run; a mob given up for any other reason does.
     private void Finish()
     {
         CustomMobList.BuildObjectives(objectives);
         leftOutNames.Clear();
+        notUpNames.Clear();
         var kills = 0;
         var huntable = 0;
         for (var objectiveIndex = 0; objectiveIndex < objectives.Count; objectiveIndex++)
         {
             var objective = objectives[objectiveIndex];
             kills += objective.Remaining;
+            if (RunSession.MarksNotUp.Contains(objective.NameId))
+            {
+                notUpNames.Add(ObjectiveProgress.Name(objective));
+                continue;
+            }
+
             if (ObjectivePlanner.CanHunt(objective))
             {
                 huntable++;
@@ -154,23 +178,32 @@ internal sealed class AutoCustomHunt(AutoHuntSession session, HuntProgress progr
             leftOutNames.Add(ObjectiveProgress.Name(objective));
         }
 
+        var left = DescribeLeft();
         if (huntable > 0)
         {
-            Diag($"Run: finished with {kills} kill(s) left on {objectives.Count} custom mob(s), {huntable} of them huntable");
-            Svc.Chat.Print($"{AhgConstants.LogPrefix} Hunt ended with {kills} kill(s) left on {objectives.Count} mob(s). The log has the details.");
+            Diag($"Run: finished with {kills} kill(s) left on {objectives.Count} custom mob(s), {huntable} of them huntable, {notUpNames.Count} hunt mark(s) not found, {leftOutNames.Count} without spawn data");
+            Svc.Chat.Print($"{AhgConstants.LogPrefix} Hunt ended with {kills} kill(s) left on {objectives.Count} mob(s).{left} The log has the details.");
             return;
         }
 
         RunSession.CompletedByStopCondition = true;
-        if (leftOutNames.Count == 0)
+        if (left.Length == 0)
         {
             Diag("Run: every mob on the custom list reached its count");
             Svc.Chat.Print($"{AhgConstants.LogPrefix} Custom list complete: every mob on it reached its count.");
             return;
         }
 
-        Diag($"Run: every mob the run can hunt reached its count; {leftOutNames.Count} left to the player");
-        Svc.Chat.Print($"{AhgConstants.LogPrefix} Custom list complete as far as the run can go. Left for you, with no spawn points outside FATEs: {string.Join(", ", leftOutNames)}.");
+        Diag($"Run: every mob the run can hunt reached its count; left to the player: {notUpNames.Count} hunt mark(s) not found, {leftOutNames.Count} without spawn data");
+        Svc.Chat.Print($"{AhgConstants.LogPrefix} Custom list complete as far as the run can go.{left}");
+    }
+
+    // Each part opens with a space, so it follows the sentence before it.
+    private string DescribeLeft()
+    {
+        var notUp = notUpNames.Count == 0 ? string.Empty : $" Hunt marks not found: {string.Join(", ", notUpNames)}.";
+        var noSpawns = leftOutNames.Count == 0 ? string.Empty : $" Left for you, with no spawn points outside FATEs: {string.Join(", ", leftOutNames)}.";
+        return notUp + noSpawns;
     }
 
     private void EndTracking()

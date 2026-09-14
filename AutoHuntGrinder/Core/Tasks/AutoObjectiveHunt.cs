@@ -120,6 +120,9 @@ internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress 
         return true;
     }
 
+    // Lets a mode leave an objective for the rest of the run on an outcome the shared rules would let the next pass retry.
+    private protected virtual bool LeavesForRun(in HuntObjective objective, string name, MarkOutcome outcome) => false;
+
     // A Stop or Pause cancels the task before its last lines run, and those lines must not overwrite what the controller set.
     private protected void ReportPhase(HuntPhase phase)
     {
@@ -153,6 +156,12 @@ internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress 
                 GiveUp(objective, name, outcome);
                 return true;
             default:
+                if (LeavesForRun(objective, name, outcome))
+                {
+                    GiveUp(objective, name, outcome);
+                    return true;
+                }
+
                 Diag($"Run: {name} ended {outcome}; moving on, and the next pass may try it again");
                 return true;
         }

@@ -61,7 +61,14 @@ public abstract partial class AutoCommon
                 return null;
             }
 
-            switch (await FightMark(hunt, sighting, $"mark-fight#{engagement}"))
+            var scope = $"mark-fight#{engagement}";
+            var fight = await FightMark(hunt, sighting, scope);
+            if (hunt.IsHuntMark && EndsHuntMarkSweep(fight))
+            {
+                return SettleHuntMarkSweep(hunt, sighting.GameObjectId, fight, scope);
+            }
+
+            switch (fight)
             {
                 case MarkFight.Counted:
                     hunt.UncountedKills = 0;
@@ -81,6 +88,28 @@ public abstract partial class AutoCommon
 
         return null;
     }
+
+    // A hunt mark is a single spawn. Gone without our kill counting, someone else finished it or it despawned; out of
+    // reach or left standing, the rest of the sweep would only find that same one again.
+    private MarkOutcome SettleHuntMarkSweep(MarkHuntContext hunt, ulong markId, MarkFight fight, string scope)
+    {
+        if (CheckMarkState(hunt) is { } stop)
+        {
+            return stop;
+        }
+
+        if (fight == MarkFight.Unreachable)
+        {
+            hunt.Ignore(markId);
+            Diag($"{scope}: {hunt.Name} is up but could not be reached or finished; ending this sweep");
+            return MarkOutcome.Unreachable;
+        }
+
+        Diag($"{scope}: {hunt.Name} is gone ({fight}) and no kill counted for us; treating it as not found this sweep");
+        return MarkOutcome.NotFound;
+    }
+
+    private static bool EndsHuntMarkSweep(MarkFight fight) => fight is MarkFight.NotCounted or MarkFight.Lost or MarkFight.Unreachable;
 
     private async Task<MarkFight> FightMark(MarkHuntContext hunt, MarkSighting sighting, string scope)
     {
@@ -170,7 +199,7 @@ public abstract partial class AutoCommon
         }
 
         var reach = ReachMeters();
-        var deadline = Environment.TickCount64 + (hunt.Elite ? EliteMarkFightBudgetMs : DailyMarkFightBudgetMs);
+        var deadline = Environment.TickCount64 + hunt.FightBudgetMs;
         var lastHp = uint.MaxValue;
         var hpChangedAt = Environment.TickCount64;
         var bounces = 0;
@@ -208,7 +237,7 @@ public abstract partial class AutoCommon
                 var now = Environment.TickCount64;
                 if (now >= deadline)
                 {
-                    Warn($"{scope}: {hunt.Name} still stands after {(hunt.Elite ? EliteMarkFightBudgetMs : DailyMarkFightBudgetMs) / TimeUnits.MillisecondsPerSecond}s; leaving it");
+                    Warn($"{scope}: {hunt.Name} still stands after {hunt.FightBudgetMs / TimeUnits.MillisecondsPerSecond}s; leaving it");
                     return MarkFight.Unreachable;
                 }
 
