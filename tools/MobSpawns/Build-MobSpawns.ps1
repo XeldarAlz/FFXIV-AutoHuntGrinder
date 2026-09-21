@@ -330,6 +330,7 @@ foreach ($marker in Read-SheetRows 'MapMarker') {
 $zones = @{}
 $skippedNames = 0
 $openWorldReports = 0
+$corruptReports = 0
 foreach ($key in $reports.Keys) {
     $name = $names[$key]
     if ($null -eq $name -or $name.Singular.Length -eq 0) {
@@ -340,6 +341,12 @@ foreach ($key in $reports.Keys) {
     foreach ($position in $reports[$key].positions) {
         $frame = $mapFrames[[int]$position.map]
         if ($null -eq $frame) {
+            continue
+        }
+
+        $reportedWithoutMonsterData = [int]$position.level -eq 0
+        if ($reportedWithoutMonsterData) {
+            $corruptReports++
             continue
         }
 
@@ -566,7 +573,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path $OutputPath) | Out-Null
 $outputBytes = (Get-Item $OutputPath).Length
 
 Write-Host "Wrote $OutputPath ($(Format-Number ($outputBytes / 1024.0) '0.0') KiB)"
-Write-Host "Position reports: $openWorldReports in open-world zones; $skippedNames dataset names skipped for a missing or empty BNpcName row"
+Write-Host "Position reports: $openWorldReports in open-world zones; $corruptReports level 0 reports dropped as corrupt; $skippedNames dataset names skipped for a missing or empty BNpcName row"
 Write-Host "Names: $($nameIds.Count) ($areaOnlyNames with sub-area points only, $fateOnlyNames with FATE positions only)"
 Write-Host "Zones: $entryTotal ($fateOnlyEntries from FATE positions only, $areaEntries from sub-area labels)"
 Write-Host "Points: $pointTotal ($areaPoints sub-area points)"
