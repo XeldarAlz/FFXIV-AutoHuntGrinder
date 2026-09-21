@@ -25,6 +25,8 @@ public abstract partial class AutoCommon
     private const float MarkDriftMeters = 10f;
     private const float MarkFloorLiftMeters = 3f;
     private const float MarkFloorHalfExtentMeters = 5f;
+    // A leg stops this far inside the mark's reach, so rounding at the edge cannot leave it a hair outside.
+    private const float MarkLegInsetMeters = 0.5f;
     private const int MarkTrackIntervalMs = 100;
     private const int MarkApproachWatchdogMs = 40_000;
     private const int MaxMarkApproachLegs = 4;
@@ -213,7 +215,7 @@ public abstract partial class AutoCommon
             }
 
             var stopAt = plan.Rides ? MarkLandingMeters : approach;
-            var legMovement = MovementFor(plan.Mode, plan.ToleranceFor(stopAt));
+            var legMovement = MovementFor(plan.Mode, MarkLegTolerance(plan.Target, live, stopAt));
             Diag($"{legScope}: going {plan.Mode} toward {hunt.Name}, {live.DistanceToHitbox:F0}m out");
             var startedAt = Environment.TickCount64;
             var operation = new MoveOp(move => move.MoveInZone(plan.Target, legMovement, StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel)));
@@ -473,7 +475,8 @@ public abstract partial class AutoCommon
         HoldCombatMovement(scope);
         try
         {
-            var operation = new MoveOp(move => move.MoveInZone(destination, walkMovement.WithTolerance(approach), StopWhenMarkWithin(markId, approach, destination, hunt.FightLabel)));
+            var legMovement = walkMovement.WithTolerance(MarkLegTolerance(destination, live, approach));
+            var operation = new MoveOp(move => move.MoveInZone(destination, legMovement, StopWhenMarkWithin(markId, approach, destination, hunt.FightLabel)));
             await RunCancellable(operation, MarkRepositionWatchdogMs, scope, StuckDetector.MoveStallAbort(scope));
             if (operation.Fault is { } fault)
             {
@@ -633,11 +636,20 @@ public abstract partial class AutoCommon
     private static float LandingStandOffMeters(in MarkSighting mark)
         => mark.HitboxRadius + (FightsInMelee() ? MarkMeleeLandingGapMeters : MarkRangedLandingGapMeters);
 
+    // The floor nearest the mark is the floor it stands on. The floor query answers with the highest floor anywhere in
+    // its column, which on a slope is the uphill neighbour metres to the side, so it only serves a mark hovering clear
+    // of every floor.
     private static Vector3 MarkFloorNear(Vector3 position)
     {
         var navmesh = NavmeshIPC.Instance;
-        return navmesh.PointOnFloor(position with { Y = position.Y + MarkFloorLiftMeters }, allowUnlandable: false, MarkFloorHalfExtentMeters)
-            ?? navmesh.NearestStandablePoint(position, MarkFloorHalfExtentMeters, MarkFloorHalfExtentMeters)
+        return navmesh.NearestStandablePoint(position, MarkFloorHalfExtentMeters, MarkFloorHalfExtentMeters)
+            ?? navmesh.PointOnFloor(position with { Y = position.Y + MarkFloorLiftMeters }, allowUnlandable: false, MarkFloorHalfExtentMeters)
             ?? position;
     }
+
+    // The pathfinder calls a leg arrived by its distance to the leg's goal, and the fight calls a mark reached by its
+    // distance to the mark's hitbox. The goal is floor near the mark, not the mark, so the leg gets what is left of the
+    // reach once the gap between the two is taken out, and arriving always means reaching.
+    private static float MarkLegTolerance(Vector3 legGoal, in MarkSighting mark, float reachMeters)
+        => MathF.Max(MinLegToleranceMeters, reachMeters + mark.HitboxRadius - Vector3.Distance(legGoal, mark.Position) - MarkLegInsetMeters);
 }
