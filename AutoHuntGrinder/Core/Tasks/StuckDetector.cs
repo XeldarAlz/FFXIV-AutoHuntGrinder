@@ -15,6 +15,7 @@ internal static class StuckDetector
     // A path the pathfinder drops this soon after starting was never walked; something else had hold of the character.
     internal const int FalseStartMs = 1_500;
     internal const float OffMeshProbeMeters = 5f;
+    private const float UnderWorldClearanceMeters = 10f;
     // A second look this much later, so a hop off a ledge or a seam between mesh tiles does not read as a fall through the world.
     internal const int OffMeshConfirmMs = 1_000;
     internal const int AirborneFreezeMs = 2_000;
@@ -35,9 +36,11 @@ internal static class StuckDetector
             || condition[ConditionFlag.WatchingCutscene78];
     }
 
-    // The world's floor catches a character that fell through the terrain, and a ledge nothing leads to holds one that
-    // landed on it. Neither has a reachable mesh point anywhere near, and neither is a stall, because the character can
-    // still move; the pathfinder even keeps planning routes from there.
+    // The world's floor catches a character that fell through the terrain. That is no stall, because the character can
+    // still move; the pathfinder even keeps planning routes from there. Floor the pathfinder calls unreachable is not
+    // proof on its own: the flag only says the floor connects to none of its seed points for the zone, which is as true
+    // of a whole island or the far half of a split zone as of the floor under the world. Under the world is where the
+    // seeded surface lies overhead.
     internal static bool IsOffMesh()
     {
         if (Svc.Objects.LocalPlayer is not { } player)
@@ -58,7 +61,24 @@ internal static class StuckDetector
         }
 
         var navmesh = NavmeshIPC.Instance;
-        return navmesh.IsReady() && navmesh.NearestPointReachable(player.Position, OffMeshProbeMeters, OffMeshProbeMeters) is null;
+        if (!navmesh.IsReady())
+        {
+            return false;
+        }
+
+        var position = player.Position;
+        if (navmesh.NearestPointReachable(position, OffMeshProbeMeters, OffMeshProbeMeters) is not null)
+        {
+            return false;
+        }
+
+        if (navmesh.NearestPoint(position, OffMeshProbeMeters, OffMeshProbeMeters) is null)
+        {
+            return true;
+        }
+
+        return navmesh.HighestFloor(position, allowUnlandable: false, OffMeshProbeMeters) is { } surface
+            && surface.Y - position.Y > UnderWorldClearanceMeters;
     }
 
     internal static Func<bool> MoveStallAbort(string label)

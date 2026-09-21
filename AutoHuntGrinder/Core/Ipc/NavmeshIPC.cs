@@ -8,12 +8,15 @@ internal sealed class NavmeshIPC
 {
     public const int WaypointsUnavailable = -1;
 
+    private const float AboveEveryTerrainY = 1024f;
+
     private const float BuildIdle = -1f;
     private const string IsReadyFailed = AhgConstants.LogPrefix + " Navmesh IsReady failed";
     private const string BuildProgressFailed = AhgConstants.LogPrefix + " Navmesh BuildProgress failed";
     private const string IsRunningFailed = AhgConstants.LogPrefix + " Navmesh IsRunning failed";
     private const string SimpleMovePathfindFailed = AhgConstants.LogPrefix + " Navmesh SimpleMove.PathfindInProgress failed";
     private const string NavPathfindFailed = AhgConstants.LogPrefix + " Navmesh Nav.PathfindInProgress failed";
+    private const string NearestPointFailed = AhgConstants.LogPrefix + " Navmesh NearestPoint failed";
     private const string NearestPointReachableFailed = AhgConstants.LogPrefix + " Navmesh NearestPointReachable failed";
     private const string PointOnFloorFailed = AhgConstants.LogPrefix + " Navmesh PointOnFloor failed";
     private const string NumWaypointsFailed = AhgConstants.LogPrefix + " Navmesh NumWaypoints failed";
@@ -28,6 +31,7 @@ internal sealed class NavmeshIPC
     private readonly ICallGateSubscriber<bool> navPathfindInProgress;
     private readonly ICallGateSubscriber<bool> navIsReady;
     private readonly ICallGateSubscriber<float> navBuildProgress;
+    private readonly ICallGateSubscriber<Vector3, float, float, Vector3?> nearestPoint;
     private readonly ICallGateSubscriber<Vector3, float, float, Vector3?> nearestPointReachable;
     private readonly ICallGateSubscriber<Vector3, bool, float, Vector3?> pointOnFloor;
     private readonly ICallGateSubscriber<object> pathStop;
@@ -53,6 +57,7 @@ internal sealed class NavmeshIPC
         navPathfindInProgress = pluginInterface.GetIpcSubscriber<bool>("vnavmesh.Nav.PathfindInProgress");
         navIsReady = pluginInterface.GetIpcSubscriber<bool>("vnavmesh.Nav.IsReady");
         navBuildProgress = pluginInterface.GetIpcSubscriber<float>("vnavmesh.Nav.BuildProgress");
+        nearestPoint = pluginInterface.GetIpcSubscriber<Vector3, float, float, Vector3?>("vnavmesh.Query.Mesh.NearestPoint");
         nearestPointReachable = pluginInterface.GetIpcSubscriber<Vector3, float, float, Vector3?>("vnavmesh.Query.Mesh.NearestPointReachable");
         pointOnFloor = pluginInterface.GetIpcSubscriber<Vector3, bool, float, Vector3?>("vnavmesh.Query.Mesh.PointOnFloor");
         pathStop = pluginInterface.GetIpcSubscriber<object>("vnavmesh.Path.Stop");
@@ -90,6 +95,15 @@ internal sealed class NavmeshIPC
     public bool IsBusy()
         => IsRunning() || IsPathfinding();
 
+    // The pathfinder calls a polygon reachable only when it connects to one of its own seed points for the zone. A zone
+    // seeded on one landmass reads every other landmass as unreachable, so this answers "is any floor here at all".
+    public Vector3? NearestPoint(Vector3 position, float halfExtentXZ = 5f, float halfExtentY = 5f)
+        => IpcGate.Invoke(
+            nearestPoint.HasFunction,
+            () => nearestPoint.InvokeFunc(position, halfExtentXZ, halfExtentY),
+            (Vector3?)null,
+            NearestPointFailed);
+
     public Vector3? NearestPointReachable(Vector3 position, float halfExtentXZ = 5f, float halfExtentY = 5f)
         => IpcGate.Invoke(
             nearestPointReachable.HasFunction,
@@ -97,12 +111,18 @@ internal sealed class NavmeshIPC
             (Vector3?)null,
             NearestPointReachableFailed);
 
+    public Vector3? NearestStandablePoint(Vector3 position, float halfExtentXZ = 5f, float halfExtentY = 5f)
+        => NearestPointReachable(position, halfExtentXZ, halfExtentY) ?? NearestPoint(position, halfExtentXZ, halfExtentY);
+
     public Vector3? PointOnFloor(Vector3 point, bool allowUnlandable, float halfExtentXZ)
         => IpcGate.Invoke(
             pointOnFloor.HasFunction,
             () => pointOnFloor.InvokeFunc(point, allowUnlandable, halfExtentXZ),
             (Vector3?)null,
             PointOnFloorFailed);
+
+    public Vector3? HighestFloor(Vector3 point, bool allowUnlandable, float halfExtentXZ)
+        => PointOnFloor(point with { Y = AboveEveryTerrainY }, allowUnlandable, halfExtentXZ);
 
     public int NumWaypoints()
         => IpcGate.Invoke(pathNumWaypoints.HasFunction, numWaypointsCall, WaypointsUnavailable, NumWaypointsFailed);

@@ -1,4 +1,5 @@
 using AutoHuntGrinder.Core.Ipc;
+using AutoHuntGrinder.Core.Travel;
 using Dalamud.Game.ClientState.Conditions;
 using ECommons.DalamudServices;
 using System.Numerics;
@@ -21,6 +22,7 @@ public abstract partial class AutoCommon
     private const int GroundDismountWatchdogMs = 8_000;
     private const float LandingBackOffMeters = 8f;
     private const int LandingBackOffMs = 1_500;
+    private const float LandsOnTheSpot = 0f;
 
     private readonly Vector3[] landingSpots = new Vector3[LandingCandidateCount];
 
@@ -37,13 +39,15 @@ public abstract partial class AutoCommon
         }
 
         var here = Svc.Objects.LocalPlayer?.Position ?? Vector3.Zero;
-        return await LandAndDismount(here, scope);
+        return await LandAndDismount(here, LandsOnTheSpot, scope);
     }
 
     // From the air, the movement library's dismount descends straight down from wherever the flight ended; over a tent,
     // a canopy or a cliff face that hovers for good or drops the character through the world. So the landing is aimed
-    // at a landable floor point first, and a descent that stops moving is cut short and tried from the next spot.
-    protected async Task<bool> LandAndDismount(Vector3 around, string scope)
+    // at a landable floor point first, and a descent that stops moving is cut short and tried from the next spot. With
+    // a stand-off the spots ring the place at that distance, nearest the character first, so a flight toward a mark
+    // touches down short of it and not on top of it.
+    protected async Task<bool> LandAndDismount(Vector3 around, float standOffMeters, string scope)
     {
         if (!Svc.Condition[ConditionFlag.Mounted])
         {
@@ -56,10 +60,16 @@ public abstract partial class AutoCommon
         }
 
         Status = "Landing";
-        var found = FindLandingSpots(around, landingSpots);
+        var from = Svc.Objects.LocalPlayer?.Position ?? around;
+        var found = FindLandingSpots(around, standOffMeters, from, allowUnlandable: false, landingSpots);
         if (found == 0)
         {
-            Diag($"{scope}: no landable floor within {LandingRingRadiusMeters:F0}m of {FormatPosition(around)}; descending where the flight ended");
+            found = FindLandingSpots(around, standOffMeters, from, allowUnlandable: true, landingSpots);
+        }
+
+        if (found == 0)
+        {
+            Diag($"{scope}: no floor to land on around {FormatPosition(around)}; descending where the flight ended");
             return await DescendAndDismount(scope);
         }
 
@@ -158,29 +168,60 @@ public abstract partial class AutoCommon
         NavmeshIPC.Instance.Stop();
     }
 
-    // The spot itself first, then a ring around it, each snapped to the highest landable floor under it.
-    private static int FindLandingSpots(Vector3 around, Vector3[] spots)
+    // Each candidate is snapped to the highest floor under it. Landing on the spot takes the spot itself first and then
+    // a ring around it; with a stand-off the ring comes first, nearest the character, and the spot itself is the last resort.
+    private static int FindLandingSpots(Vector3 around, float standOffMeters, Vector3 from, bool allowUnlandable, Vector3[] spots)
     {
         var navmesh = NavmeshIPC.Instance;
+        var standsOff = standOffMeters > LandsOnTheSpot;
         var found = 0;
-        if (LandableFloor(navmesh, around) is { } center)
+        if (!standsOff && LandingFloor(navmesh, around, allowUnlandable) is { } center)
         {
             spots[found++] = center;
         }
 
+        var radius = standsOff ? standOffMeters : LandingRingRadiusMeters;
         for (var step = 0; step < LandingRingPoints; step++)
         {
             var angle = MathF.Tau * step / LandingRingPoints;
-            var candidate = around + new Vector3(MathF.Cos(angle) * LandingRingRadiusMeters, 0f, MathF.Sin(angle) * LandingRingRadiusMeters);
-            if (LandableFloor(navmesh, candidate) is { } floor)
+            var candidate = around + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius);
+            if (LandingFloor(navmesh, candidate, allowUnlandable) is { } floor)
             {
                 spots[found++] = floor;
             }
         }
 
+        if (!standsOff)
+        {
+            return found;
+        }
+
+        SortNearestFirst(spots, found, from);
+        if (LandingFloor(navmesh, around, allowUnlandable) is { } lastResort)
+        {
+            spots[found++] = lastResort;
+        }
+
         return found;
     }
 
-    private static Vector3? LandableFloor(NavmeshIPC navmesh, Vector3 point)
-        => navmesh.PointOnFloor(point with { Y = point.Y + LandingProbeLiftMeters }, allowUnlandable: false, LandingFloorHalfExtentMeters);
+    private static void SortNearestFirst(Vector3[] spots, int count, Vector3 from)
+    {
+        for (var sortedCount = 1; sortedCount < count; sortedCount++)
+        {
+            var spot = spots[sortedCount];
+            var distance = GroundDistance.SquaredBetween(from, spot);
+            var slot = sortedCount;
+            while (slot > 0 && GroundDistance.SquaredBetween(from, spots[slot - 1]) > distance)
+            {
+                spots[slot] = spots[slot - 1];
+                slot--;
+            }
+
+            spots[slot] = spot;
+        }
+    }
+
+    private static Vector3? LandingFloor(NavmeshIPC navmesh, Vector3 point, bool allowUnlandable)
+        => navmesh.PointOnFloor(point with { Y = point.Y + LandingProbeLiftMeters }, allowUnlandable, LandingFloorHalfExtentMeters);
 }

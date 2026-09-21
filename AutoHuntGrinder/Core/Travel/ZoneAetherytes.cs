@@ -55,6 +55,8 @@ internal static class ZoneAetherytes
         return bestDistance < float.MaxValue;
     }
 
+    public static ReadOnlyMemory<ZoneAetheryte> TeleportableIn(uint territoryId) => InTerritory(territoryId);
+
     // A question about ids alone: InTerritory drops rows whose position will not resolve, which would read back as a zone with none.
     public static uint[] AttunableIdsIn(uint territoryId)
     {

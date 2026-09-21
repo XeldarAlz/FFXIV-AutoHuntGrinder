@@ -290,8 +290,8 @@ public abstract partial class AutoCommon
         var navmesh = NavmeshIPC.Instance;
         var landing = Svc.Condition[ConditionFlag.InFlight]
             ? navmesh.PointOnFloor(position, allowUnlandable: false, GroundSearchHalfExtentMeters)
-                ?? navmesh.NearestPointReachable(position, GroundSearchHalfExtentMeters, GroundSearchHalfExtentMeters)
-            : navmesh.NearestPointReachable(position, GroundSearchHalfExtentMeters, GroundSearchHalfExtentMeters);
+                ?? navmesh.NearestStandablePoint(position, GroundSearchHalfExtentMeters, GroundSearchHalfExtentMeters)
+            : navmesh.NearestStandablePoint(position, GroundSearchHalfExtentMeters, GroundSearchHalfExtentMeters);
         if (landing is not { } solidGround)
         {
             Warn($"{scope}: off solid ground ({ConditionTag()}) with no reachable mesh point to relocate to; teleport may fail");

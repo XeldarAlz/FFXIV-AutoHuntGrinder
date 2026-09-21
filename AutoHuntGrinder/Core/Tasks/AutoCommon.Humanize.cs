@@ -16,15 +16,12 @@ public abstract partial class AutoCommon
     private const int HumanizePlayerWaitMs = 500;
     private const int HumanizeIdleWithoutRouteMs = 1_500;
     private const int HumanizeMinHopBudgetMs = 4_000;
-    private const int HumanizeRouteQueryTimeoutMs = 5_000;
     private const int HumanizeCandidateAttempts = 8;
     private const float HumanizeArrivalToleranceMeters = 4f;
     private const float HumanizeCandidateHalfExtentXZ = 10f;
     private const float HumanizeCandidateHalfExtentY = 5f;
     // A candidate the mesh snaps back to within half the shortest walk is not worth the trip.
     private const float HumanizeMinSnapFraction = 0.5f;
-    // The navmesh appends the raw target after a partial path, so a last leg longer than mesh noise ends at a wall the walk would push into.
-    private const float HumanizePartialRouteGapMeters = 0.75f;
     private const float HumanizeMaxDetourRatio = 2f;
 
     // A break that never reached the city is not counted as taken.
@@ -147,7 +144,7 @@ public abstract partial class AutoCommon
                 continue;
             }
 
-            var rejection = RejectWanderRoute(await QueryWanderRoute(from, reachable), from, reachable);
+            var rejection = RejectWanderRoute(await ProbeGroundRoute(from, reachable), Vector3.Distance(from, reachable));
             if (rejection is null)
             {
                 return reachable;
@@ -159,56 +156,12 @@ public abstract partial class AutoCommon
         return null;
     }
 
-    private async Task<List<Vector3>?> QueryWanderRoute(Vector3 from, Vector3 to)
+    private static string? RejectWanderRoute(in GroundRoute route, float straight) => route.Kind switch
     {
-        var pending = NavmeshPathfindIPC.Instance.Pathfind(from, to, fly: false);
-        if (pending is null)
-        {
-            return null;
-        }
-
-        var deadline = Environment.TickCount64 + HumanizeRouteQueryTimeoutMs;
-        while (!pending.IsCompleted)
-        {
-            if (CancelToken.IsCancellationRequested || Environment.TickCount64 >= deadline)
-            {
-                return null;
-            }
-
-            await NextFrame();
-        }
-
-        if (pending.IsFaulted)
-        {
-            Diag($"Humanize: route query faulted: {pending.Exception?.GetBaseException().Message}");
-            return null;
-        }
-
-        return pending.IsCompletedSuccessfully ? pending.Result : null;
-    }
-
-    private static string? RejectWanderRoute(List<Vector3>? route, Vector3 from, Vector3 destination)
-    {
-        if (route is null || route.Count < 2)
-        {
-            return "no route";
-        }
-
-        var gap = Vector3.Distance(route[^2], route[^1]);
-        if (gap > HumanizePartialRouteGapMeters)
-        {
-            return $"the route stops {gap:F1}m short (partial path)";
-        }
-
-        var length = Vector3.Distance(from, route[0]);
-        for (var pointIndex = 1; pointIndex < route.Count; pointIndex++)
-        {
-            length += Vector3.Distance(route[pointIndex - 1], route[pointIndex]);
-        }
-
-        var straight = Vector3.Distance(from, destination);
-        return length > straight * HumanizeMaxDetourRatio ? $"a {length:F0}m detour for {straight:F0}m straight" : null;
-    }
+        GroundRouteKind.Unknown => "no route",
+        GroundRouteKind.Partial => $"the route stops {route.ShortfallMeters:F1}m short (partial path)",
+        _ => route.LengthMeters > straight * HumanizeMaxDetourRatio ? $"a {route.LengthMeters:F0}m detour for {straight:F0}m straight" : null,
+    };
 
     // Read on every walk, so a settings change during a break applies to the next pause.
     private static int RollWanderPauseMs()

@@ -24,6 +24,7 @@ public abstract partial class AutoCommon
     private const int StallsBeforeUnstick = 2;
     private const int StallsBeforeTeleportRecovery = 3;
     private const int MaxFalseStarts = 3;
+    private const int MaxLandmassTeleports = 2;
     private const int FalseStartSettleMs = 1_500;
     private const int StillnessConfirmMs = 300;
     private const int StillnessPollMs = 100;
@@ -49,9 +50,7 @@ public abstract partial class AutoCommon
     private const int UnstickStepWatchdogMs = 8_000;
     private const float UnstickSideStepMeters = 4f;
     private const float UnstickSideStepHalfExtentMeters = 3f;
-
-    private static readonly MovementConfig rideMovement = MovementConfig.Everything.WithOptions(MovementOptions.Mount | MovementOptions.Fly);
-    private static readonly MovementConfig walkMovement = MovementConfig.Default;
+    private const float AetheryteFloorHalfExtentMeters = 10f;
 
     private bool outsideMovementWarned;
 
@@ -61,7 +60,7 @@ public abstract partial class AutoCommon
 
     private enum TeleportPurpose { Shortcut, Recovery, OffMesh }
 
-    protected async Task<bool> TravelTo(uint territoryId, Vector3 destination, float arriveWithin)
+    protected async Task<bool> TravelTo(uint territoryId, Vector3 destination, float arriveWithin, bool groundStalled = false)
     {
         var zoneName = TerritoryNames.Of(territoryId);
         Diag($"Travel: to {zoneName} ({territoryId}) at {FormatPosition(destination)} within {arriveWithin:F1}m, starting in territory {Svc.ClientState.TerritoryType} ({ConditionTag()})");
@@ -77,7 +76,7 @@ public abstract partial class AutoCommon
                 return false;
             }
 
-            var result = await TravelWithinZone(territoryId, destination, arriveWithin, zoneName);
+            var result = await TravelWithinZone(territoryId, destination, arriveWithin, zoneName, groundStalled);
             if (result != ZoneTravelResult.LeftZone)
             {
                 return result == ZoneTravelResult.Arrived;
@@ -132,7 +131,7 @@ public abstract partial class AutoCommon
         return false;
     }
 
-    private async Task<ZoneTravelResult> TravelWithinZone(uint territoryId, Vector3 destination, float arriveWithin, string zoneName)
+    private async Task<ZoneTravelResult> TravelWithinZone(uint territoryId, Vector3 destination, float arriveWithin, string zoneName, bool groundStalled)
     {
         await WaitForNavmeshReady(TravelNavmeshWaitMs, TravelNavmeshPollFrames);
         if (CancelToken.IsCancellationRequested)
@@ -152,6 +151,7 @@ public abstract partial class AutoCommon
         var deadline = Environment.TickCount64 + budgetMs;
         var stalls = 0;
         var falseStarts = 0;
+        var landmassTeleports = 0;
         var teleportRecoveryUsed = false;
         for (var leg = 1; ; leg++)
         {
@@ -179,7 +179,28 @@ public abstract partial class AutoCommon
             }
 
             var scope = $"travel-leg#{leg}";
-            var outcome = await RunTravelLeg(target, arriveWithin, mountingAllowed, (int)remainingMs, scope, zoneName);
+            var plan = await PlanLeg(territoryId, target, arriveWithin, MountMinMeters, mountingAllowed, groundStalled || stalls > 0, scope);
+            if (CancelToken.IsCancellationRequested)
+            {
+                return ZoneTravelResult.Failed;
+            }
+
+            if (!plan.Reachable)
+            {
+                if (landmassTeleports < MaxLandmassTeleports)
+                {
+                    landmassTeleports++;
+                    if (await TryTeleportToConnectedAetheryte(territoryId, target, arriveWithin, scope))
+                    {
+                        continue;
+                    }
+                }
+
+                Warn($"Travel: no ground route reaches the spot in {zoneName} from here or from an attuned aetheryte (the nearest floor is {plan.ShortfallMeters:F0}m short of it), and flying is not available; giving up");
+                return ZoneTravelResult.Failed;
+            }
+
+            var outcome = await RunTravelLeg(plan, target, arriveWithin, mountingAllowed, (int)remainingMs, scope, zoneName);
             if (outcome == LegOutcome.Remount || CancelToken.IsCancellationRequested || Arrived(target, destination, arriveWithin))
             {
                 continue;
@@ -231,9 +252,9 @@ public abstract partial class AutoCommon
         }
     }
 
-    private async Task<LegOutcome> RunTravelLeg(Vector3 target, float arriveWithin, bool mountingAllowed, int watchdogMs, string scope, string zoneName)
+    private async Task<LegOutcome> RunTravelLeg(LegPlan plan, Vector3 target, float arriveWithin, bool mountingAllowed, int watchdogMs, string scope, string zoneName)
     {
-        var ride = mountingAllowed && FreeToMount() && (Svc.Condition[ConditionFlag.Mounted] || DistanceTo(target) > MountMinMeters);
+        var ride = plan.Rides;
         var canRemount = mountingAllowed && !ride;
         var label = ride ? $"Riding to the spot in {zoneName}" : $"Walking to the spot in {zoneName}";
         var remount = false;
@@ -275,9 +296,9 @@ public abstract partial class AutoCommon
             return true;
         }
 
-        Diag($"{scope}: {(ride ? "mounted" : "on foot")}, flight {(ECommons.GameHelpers.Player.CanFly ? "available" : "unavailable")}, {DistanceTo(target):F0}m to go");
+        Diag($"{scope}: going {plan.Mode}, {DistanceTo(target):F0}m to go");
         var startedAt = Environment.TickCount64;
-        var operation = new MoveOp(move => move.MoveInZone(target, MovementFor(ride, arriveWithin), StopCondition));
+        var operation = new MoveOp(move => move.MoveInZone(plan.Target, MovementFor(plan.Mode, plan.ToleranceFor(arriveWithin)), StopCondition));
         var completed = await RunCancellable(operation, watchdogMs, scope, AbortIfStalled);
         if (remount)
         {
@@ -370,7 +391,7 @@ public abstract partial class AutoCommon
         }
 
         var here = Svc.Objects.LocalPlayer?.Position ?? Vector3.Zero;
-        Warn($"{scope}: no reachable mesh within {StuckDetector.OffMeshProbeMeters:F0}m of {FormatPosition(here)} ({ConditionTag()}); the character is off the world's surface, teleporting out");
+        Warn($"{scope}: no floor of the world within {StuckDetector.OffMeshProbeMeters:F0}m of {FormatPosition(here)} ({ConditionTag()}); the character is off the world's surface, teleporting out");
         return await TryTeleportShortcut(territoryId, target, $"{scope}-offmesh", TeleportPurpose.OffMesh);
     }
 
@@ -407,6 +428,64 @@ public abstract partial class AutoCommon
             TeleportPurpose.Recovery => $"{label}: teleporting to {aetheryte.Name} to get unstuck, {fromAetheryte:F0}m from the spot",
             _ => $"{label}: teleporting to {aetheryte.Name} to get back onto the world, {fromAetheryte:F0}m from the spot",
         });
+        return await TeleportToAetheryte(territoryId, aetheryte, label);
+    }
+
+    // A zone can hold landmasses no floor connects, and the aetheryte nearest the spot in a straight line can stand on
+    // the wrong one, so each attuned aetheryte is asked for its own ground route and the shortest whole one wins.
+    private async Task<bool> TryTeleportToConnectedAetheryte(uint territoryId, Vector3 target, float reachMeters, string scope)
+    {
+        if (Svc.Condition[ConditionFlag.InCombat] || Svc.Objects.LocalPlayer is not { } player)
+        {
+            return false;
+        }
+
+        var here = player.Position;
+        var aetherytes = ZoneAetherytes.TeleportableIn(territoryId);
+        var navmesh = NavmeshIPC.Instance;
+        ZoneAetheryte? connected = null;
+        var shortest = float.MaxValue;
+        for (var index = 0; index < aetherytes.Length; index++)
+        {
+            if (CancelToken.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            var aetheryte = aetherytes.Span[index];
+            if (!ZoneAetherytes.IsAttuned(aetheryte.Id) || Vector3.Distance(here, aetheryte.Position) < TeleportRecoveryMinHopMeters)
+            {
+                continue;
+            }
+
+            if (navmesh.NearestStandablePoint(aetheryte.Position, AetheryteFloorHalfExtentMeters, AetheryteFloorHalfExtentMeters) is not { } floor)
+            {
+                continue;
+            }
+
+            var route = await ProbeGroundRoute(floor, target);
+            var reaches = route.Kind == GroundRouteKind.Complete || (route.Kind == GroundRouteKind.Partial && route.ShortfallMeters <= reachMeters);
+            Diag($"{scope}: from {aetheryte.Name} the ground route is {route.Kind}, {route.LengthMeters:F0}m long and {route.ShortfallMeters:F0}m short of the spot");
+            if (!reaches || route.LengthMeters >= shortest)
+            {
+                continue;
+            }
+
+            shortest = route.LengthMeters;
+            connected = aetheryte;
+        }
+
+        if (connected is not { } chosen)
+        {
+            return false;
+        }
+
+        Diag($"{scope}: the spot is on another landmass; {chosen.Name} reaches it over {shortest:F0}m of ground, teleporting there");
+        return await TeleportToAetheryte(territoryId, chosen, $"{scope}-landmass");
+    }
+
+    private async Task<bool> TeleportToAetheryte(uint territoryId, ZoneAetheryte aetheryte, string label)
+    {
         var moved = false;
         await RunWithStatusPinned($"Teleporting to {aetheryte.Name}", async () =>
         {
@@ -495,7 +574,7 @@ public abstract partial class AutoCommon
 
         var position = player.Position;
         var navmesh = NavmeshIPC.Instance;
-        var step = navmesh.NearestPointReachable(position, UnstickStepHalfExtentMeters, UnstickStepHalfExtentMeters);
+        var step = navmesh.NearestStandablePoint(position, UnstickStepHalfExtentMeters, UnstickStepHalfExtentMeters);
         if (step is null || Vector3.Distance(position, step.Value) < UnstickStepMinMeters)
         {
             step = SideStep(navmesh, position, target, stalls);
@@ -523,7 +602,7 @@ public abstract partial class AutoCommon
         toward = Vector2.Normalize(toward);
         var side = stalls % 2 == 0 ? new Vector2(-toward.Y, toward.X) : new Vector2(toward.Y, -toward.X);
         var candidate = position + new Vector3(side.X * UnstickSideStepMeters, 0f, side.Y * UnstickSideStepMeters);
-        var snapped = navmesh.NearestPointReachable(candidate, UnstickSideStepHalfExtentMeters, UnstickSideStepHalfExtentMeters);
+        var snapped = navmesh.NearestStandablePoint(candidate, UnstickSideStepHalfExtentMeters, UnstickSideStepHalfExtentMeters);
         return snapped is { } onMesh && Vector3.Distance(position, onMesh) >= UnstickStepMinMeters ? onMesh : null;
     }
 
@@ -536,7 +615,7 @@ public abstract partial class AutoCommon
             ?? navmesh.PointOnFloor(lifted, allowUnlandable: true, SnapHalfExtentMeters);
         var target = floor is { } point && destination.Y - point.Y <= SnapMaxDropMeters
             ? point
-            : navmesh.NearestPointReachable(destination, SnapHalfExtentMeters, SnapHalfExtentMeters) ?? destination;
+            : navmesh.NearestStandablePoint(destination, SnapHalfExtentMeters, SnapHalfExtentMeters) ?? destination;
         var moved = Vector3.Distance(destination, target);
         if (moved >= SnapReportMeters)
         {
@@ -568,9 +647,6 @@ public abstract partial class AutoCommon
         var travelMs = distance / TravelMinSpeedMetersPerSecond * TimeUnits.MillisecondsPerSecond;
         return (int)Math.Min(TravelMaxBudgetMs, TravelBaseBudgetMs + travelMs);
     }
-
-    private static MovementConfig MovementFor(bool ride, float tolerance)
-        => (ride ? rideMovement : walkMovement).WithTolerance(tolerance);
 
     private static bool TerritoryAllowsMount(uint territoryId)
         => Svc.Data.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>().GetRowOrDefault(territoryId)?.Mount ?? false;

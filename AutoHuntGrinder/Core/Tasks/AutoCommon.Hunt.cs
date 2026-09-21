@@ -29,6 +29,9 @@ public abstract partial class AutoCommon
     private const float MarkSweepArriveMeters = 20f;
     // Anywhere inside the sub-area will do; its label is not where the mobs stand.
     private const float AreaSweepArriveMeters = 45f;
+    // A sub-area point is a guess and its height is unknown, so it often snaps onto a cliff top or across water. The
+    // nearest floor the ground reaches still looks over the same stretch of the sub-area when it is this close.
+    private const float AreaPartialReachMeters = 60f;
     private const int MarkScanIntervalMs = 250;
     private const int MarkPointSettleMs = 1_500;
     // A sub-area's mobs are spread over it on respawn timers, so the character waits long enough for one to wander into view.
@@ -40,8 +43,6 @@ public abstract partial class AutoCommon
     private const int MaxMarkSightingsPerPoint = 6;
     private const int MaxMarkKnockouts = 3;
     private const int MaxUncountedMarkKills = 3;
-    // Spawn reports carry no height; a probe above every terrain in the game finds the highest floor under the point.
-    private const float MarkHeightProbeY = 1024f;
     private const float MarkHeightSearchHalfExtentMeters = 5f;
     private const float MarkHeightFallbackHalfExtentMeters = 10f;
     private const float MarkHeightFallbackVerticalMeters = 300f;
@@ -298,6 +299,7 @@ public abstract partial class AutoCommon
             if (hunt.PointsReached == reachedBefore)
             {
                 Warn($"Hunt: could not reach any of {hunt.Name}'s {points.Length} spawn point(s) in {hunt.ZoneName}");
+                AnnounceUnreachable(hunt);
                 return MarkOutcome.Unreachable;
             }
 
@@ -306,6 +308,13 @@ public abstract partial class AutoCommon
         }
 
         return MarkOutcome.NotFound;
+    }
+
+    private static void AnnounceUnreachable(MarkHuntContext hunt)
+    {
+        Svc.Chat.PrintError(FlightAccess.IsAvailableIn(hunt.TerritoryId)
+            ? $"{AhgConstants.LogPrefix} None of the known spots for {hunt.Name} in {hunt.ZoneName} could be reached; moving on."
+            : $"{AhgConstants.LogPrefix} No ground route reaches the known spots for {hunt.Name} in {hunt.ZoneName}, and flying is not unlocked there; moving on.");
     }
 
     private async Task<MarkOutcome?> SearchMarkPoint(MarkHuntContext hunt, Vector3 point, string scope)
@@ -386,11 +395,15 @@ public abstract partial class AutoCommon
         MarkPhase = HuntPhase.Searching;
         var sighted = false;
         var nextScanAt = 0L;
+        var goal = point;
+        var goalTolerance = arriveWithin;
+
+        bool AtGoal() => WithinReach(point, arriveWithin) || WithinReach(goal, goalTolerance);
 
         bool StopCondition()
         {
             Status = hunt.SearchLabel;
-            if (WithinReach(point, arriveWithin))
+            if (AtGoal())
             {
                 return true;
             }
@@ -406,21 +419,50 @@ public abstract partial class AutoCommon
             return sighted;
         }
 
+        var mountingAllowed = TerritoryAllowsMount(hunt.TerritoryId);
         var falseStarts = 0;
+        var groundLegFailed = false;
         while (true)
         {
-            var ride = TerritoryAllowsMount(hunt.TerritoryId) && FreeToMount() && (Svc.Condition[ConditionFlag.Mounted] || DistanceTo(point) > MountMinMeters);
-            Diag($"{scope}: {(ride ? "riding" : "walking")} {DistanceTo(point):F0}m to {FormatPosition(point)}");
+            var plan = await PlanLeg(hunt.TerritoryId, point, hunt.PartialReachMeters, MountMinMeters, mountingAllowed, groundStalled: false, scope);
+            if (CancelToken.IsCancellationRequested)
+            {
+                return MarkLeg.Failed;
+            }
+
+            if (!plan.Reachable)
+            {
+                // A ring point is a guess at where the sub-area's mobs roam, not worth a change of landmass.
+                if (hunt.AreaPoints)
+                {
+                    Diag($"{scope}: the nearest floor the ground reaches is {plan.ShortfallMeters:F0}m short of this sub-area point; passing over it");
+                    return MarkLeg.Failed;
+                }
+
+                Diag($"{scope}: the nearest floor the ground reaches is {plan.ShortfallMeters:F0}m short of the point; full travel looks for a landmass that reaches it");
+                return await TravelTo(hunt.TerritoryId, point, arriveWithin) ? MarkLeg.Arrived : MarkLeg.Failed;
+            }
+
+            goal = plan.Target;
+            goalTolerance = plan.ToleranceFor(arriveWithin);
+            if (AtGoal())
+            {
+                return MarkLeg.Arrived;
+            }
+
+            var legGoal = goal;
+            var legMovement = MovementFor(plan.Mode, goalTolerance);
+            Diag($"{scope}: going {plan.Mode} {DistanceTo(legGoal):F0}m to {FormatPosition(legGoal)}");
             var startedAt = Environment.TickCount64;
-            var operation = new MoveOp(move => move.MoveInZone(point, MovementFor(ride, arriveWithin), StopCondition));
-            var completed = await RunCancellable(operation, TravelBudgetMs(point), scope, StuckDetector.MoveStallAbort(scope));
+            var operation = new MoveOp(move => move.MoveInZone(legGoal, legMovement, StopCondition));
+            var completed = await RunCancellable(operation, TravelBudgetMs(legGoal), scope, StuckDetector.MoveStallAbort(scope));
             if (sighted)
             {
                 Diag($"{scope}: {hunt.Name} in view; stopping to fight it");
                 return MarkLeg.Sighted;
             }
 
-            if (WithinReach(point, arriveWithin))
+            if (AtGoal())
             {
                 return MarkLeg.Arrived;
             }
@@ -438,6 +480,7 @@ public abstract partial class AutoCommon
             var falseStart = completed && operation.Fault is null && Environment.TickCount64 - startedAt < StuckDetector.FalseStartMs;
             if (!falseStart || falseStarts >= MaxFalseStarts)
             {
+                groundLegFailed = plan.Mode != LegMode.Flight;
                 break;
             }
 
@@ -446,7 +489,7 @@ public abstract partial class AutoCommon
         }
 
         Diag($"{scope}: the direct leg ended {DistanceTo(point):F0}m short; using full travel");
-        return await TravelTo(hunt.TerritoryId, point, arriveWithin) ? MarkLeg.Arrived : MarkLeg.Failed;
+        return await TravelTo(hunt.TerritoryId, point, arriveWithin, groundLegFailed) ? MarkLeg.Arrived : MarkLeg.Failed;
     }
 
     private async Task<bool> EnterMarkTerritory(MarkHuntContext hunt)
@@ -545,16 +588,15 @@ public abstract partial class AutoCommon
     private static Vector3? SnapUnknownHeight(Vector3 point)
     {
         var navmesh = NavmeshIPC.Instance;
-        var probe = point with { Y = MarkHeightProbeY };
-        var floor = navmesh.PointOnFloor(probe, allowUnlandable: false, MarkHeightSearchHalfExtentMeters)
-            ?? navmesh.PointOnFloor(probe, allowUnlandable: true, MarkHeightSearchHalfExtentMeters);
+        var floor = navmesh.HighestFloor(point, allowUnlandable: false, MarkHeightSearchHalfExtentMeters)
+            ?? navmesh.HighestFloor(point, allowUnlandable: true, MarkHeightSearchHalfExtentMeters);
         if (floor is not null)
         {
             return floor;
         }
 
         var height = Svc.Objects.LocalPlayer?.Position.Y ?? 0f;
-        return navmesh.NearestPointReachable(point with { Y = height }, MarkHeightFallbackHalfExtentMeters, MarkHeightFallbackVerticalMeters);
+        return navmesh.NearestStandablePoint(point with { Y = height }, MarkHeightFallbackHalfExtentMeters, MarkHeightFallbackVerticalMeters);
     }
 
     private static void OrderMarkPoints(Vector3[] points, int[] order, Vector3 from)
@@ -789,6 +831,8 @@ public abstract partial class AutoCommon
         public bool SnapsHintedHeights => IsQuarry;
 
         public float ArriveMeters => AreaPoints ? AreaSweepArriveMeters : MarkSweepArriveMeters;
+
+        public float PartialReachMeters => AreaPoints ? AreaPartialReachMeters : MarkSweepArriveMeters;
 
         public int PointSettleMs => AreaPoints ? AreaPointSettleMs : MarkPointSettleMs;
 

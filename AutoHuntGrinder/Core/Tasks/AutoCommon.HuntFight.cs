@@ -17,6 +17,10 @@ public abstract partial class AutoCommon
     private const float MarkRangedApproachMeters = 20f;
     private const float MarkRideMinMeters = 40f;
     private const float MarkLandingMeters = 15f;
+    // A flight touches down this far outside the mark's hitbox, on the side it came from, instead of at the mark's
+    // feet: a few steps short of melee range, and inside casting range without standing in the mark's reach.
+    private const float MarkMeleeLandingGapMeters = 6f;
+    private const float MarkRangedLandingGapMeters = 10f;
     // A mark that wanders this far from where a leg was aimed gets a fresh leg toward where it is now.
     private const float MarkDriftMeters = 10f;
     private const float MarkFloorLiftMeters = 3f;
@@ -150,8 +154,10 @@ public abstract partial class AutoCommon
     private async Task<MarkFight> CloseOnMark(MarkHuntContext hunt, ulong markId, string scope)
     {
         var approach = ApproachMeters();
+        var mountingAllowed = TerritoryAllowsMount(hunt.TerritoryId);
         var legs = 0;
         var falseStarts = 0;
+        var groundLegFailed = false;
         while (legs < MaxMarkApproachLegs)
         {
             if (CancelToken.IsCancellationRequested)
@@ -178,7 +184,7 @@ public abstract partial class AutoCommon
             var mounted = Svc.Condition[ConditionFlag.Mounted];
             if (live.DistanceToHitbox <= approach || (mounted && live.DistanceToHitbox <= MarkLandingMeters))
             {
-                if (mounted && !await LandAndDismount(destination, $"{scope}-dismount"))
+                if (mounted && !await LandAndDismount(destination, LandingStandOffMeters(live), $"{scope}-dismount"))
                 {
                     return MarkFight.Unreachable;
                 }
@@ -188,16 +194,29 @@ public abstract partial class AutoCommon
                     return MarkFight.Reached;
                 }
 
+                groundLegFailed = false;
                 legs++;
                 continue;
             }
 
-            var ride = TerritoryAllowsMount(hunt.TerritoryId) && FreeToMount() && (mounted || live.DistanceToHitbox > MarkRideMinMeters);
-            var stopAt = ride ? MarkLandingMeters : approach;
             var legScope = $"{scope}-approach#{legs + 1}";
-            Diag($"{legScope}: {(ride ? "riding" : "walking")} toward {hunt.Name}, {live.DistanceToHitbox:F0}m out");
+            var plan = await PlanLeg(hunt.TerritoryId, destination, approach, MarkRideMinMeters, mountingAllowed, groundLegFailed, legScope);
+            if (CancelToken.IsCancellationRequested)
+            {
+                return MarkFight.Cancelled;
+            }
+
+            if (!plan.Reachable)
+            {
+                Diag($"{legScope}: the nearest floor the ground reaches is {plan.ShortfallMeters:F0}m short of {hunt.Name}; leaving this one");
+                return MarkFight.Unreachable;
+            }
+
+            var stopAt = plan.Rides ? MarkLandingMeters : approach;
+            var legMovement = MovementFor(plan.Mode, plan.ToleranceFor(stopAt));
+            Diag($"{legScope}: going {plan.Mode} toward {hunt.Name}, {live.DistanceToHitbox:F0}m out");
             var startedAt = Environment.TickCount64;
-            var operation = new MoveOp(move => move.MoveInZone(destination, MovementFor(ride, stopAt), StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel)));
+            var operation = new MoveOp(move => move.MoveInZone(plan.Target, legMovement, StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel)));
             var completed = await RunCancellable(operation, MarkApproachWatchdogMs, legScope, StuckDetector.MoveStallAbort(legScope));
             if (operation.Fault is { } fault)
             {
@@ -211,6 +230,7 @@ public abstract partial class AutoCommon
                 continue;
             }
 
+            groundLegFailed |= plan.Mode != LegMode.Flight && EndedShortOfStandingMark(markId, stopAt, destination);
             legs++;
         }
 
@@ -219,7 +239,7 @@ public abstract partial class AutoCommon
             return MarkFight.Unreachable;
         }
 
-        if (Svc.Condition[ConditionFlag.Mounted] && !await LandAndDismount(MarkFloorNear(last.Position), $"{scope}-dismount"))
+        if (Svc.Condition[ConditionFlag.Mounted] && !await LandAndDismount(MarkFloorNear(last.Position), LandingStandOffMeters(last), $"{scope}-dismount"))
         {
             return MarkFight.Unreachable;
         }
@@ -235,10 +255,14 @@ public abstract partial class AutoCommon
             return false;
         }
 
-        return TryTrackMark(markId, out var live)
-            && live.DistanceToHitbox > stopAt
-            && GroundDistance.Between(live.Position, destination) <= MarkDriftMeters;
+        return EndedShortOfStandingMark(markId, stopAt, destination);
     }
+
+    // A leg also ends when the mark wanders off from where it was aimed; that is a fresh leg, not a failed one.
+    private static bool EndedShortOfStandingMark(ulong markId, float stopAt, Vector3 destination)
+        => TryTrackMark(markId, out var live)
+        && live.DistanceToHitbox > stopAt
+        && GroundDistance.Between(live.Position, destination) <= MarkDriftMeters;
 
     // Keeps the mark targeted and the preset active until the bill counts the kill. A kill only counts once the bill's
     // own number rises, so a copy someone else finished or that despawned is told apart from a real kill.
@@ -606,11 +630,14 @@ public abstract partial class AutoCommon
 
     private static float ApproachMeters() => FightsInMelee() ? MarkMeleeApproachMeters : MarkRangedApproachMeters;
 
+    private static float LandingStandOffMeters(in MarkSighting mark)
+        => mark.HitboxRadius + (FightsInMelee() ? MarkMeleeLandingGapMeters : MarkRangedLandingGapMeters);
+
     private static Vector3 MarkFloorNear(Vector3 position)
     {
         var navmesh = NavmeshIPC.Instance;
         return navmesh.PointOnFloor(position with { Y = position.Y + MarkFloorLiftMeters }, allowUnlandable: false, MarkFloorHalfExtentMeters)
-            ?? navmesh.NearestPointReachable(position, MarkFloorHalfExtentMeters, MarkFloorHalfExtentMeters)
+            ?? navmesh.NearestStandablePoint(position, MarkFloorHalfExtentMeters, MarkFloorHalfExtentMeters)
             ?? position;
     }
 }
