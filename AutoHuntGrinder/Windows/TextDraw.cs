@@ -1,7 +1,6 @@
 using AutoHuntGrinder.Core.Localization;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
-using Dalamud.Interface.Utility.Raii;
 using System.Numerics;
 
 namespace AutoHuntGrinder.Windows;
@@ -51,19 +50,23 @@ internal static class TextDraw
 
     public static Vector2 IconSize(FontAwesomeIcon icon)
     {
-        using (ImRaii.PushFont(UiBuilder.IconFont))
+        using (Fonts.PushIcon())
+        {
             return Measure(icon.ToIconString());
+        }
     }
 
     public static void Icon(FontAwesomeIcon icon, Vector2 pos, Vector4 color)
     {
-        using (ImRaii.PushFont(UiBuilder.IconFont))
+        using (Fonts.PushIcon())
+        {
             At(icon.ToIconString(), pos, color);
+        }
     }
 
     public static void IconCentered(FontAwesomeIcon icon, Vector2 center, Vector4 color)
     {
-        using (ImRaii.PushFont(UiBuilder.IconFont))
+        using (Fonts.PushIcon())
         {
             var glyph = icon.ToIconString();
             var size = Measure(glyph);
@@ -71,9 +74,20 @@ internal static class TextDraw
         }
     }
 
+    // An animated glyph grows through the draw list at an explicit size, so the window font scale is never touched.
+    public static void IconCentered(FontAwesomeIcon icon, Vector2 center, Vector4 color, float sizeScale)
+    {
+        using (Fonts.PushIcon())
+        {
+            var glyph = icon.ToIconString();
+            var size = Measure(glyph) * sizeScale;
+            ImGui.GetWindowDrawList().AddText(ImGui.GetFont(), ImGui.GetFontSize() * sizeScale, center - size * 0.5f, Paint.Col(color), glyph, 0f);
+        }
+    }
+
     public static void IconRight(FontAwesomeIcon icon, float rightX, float centerY, Vector4 color)
     {
-        using (ImRaii.PushFont(UiBuilder.IconFont))
+        using (Fonts.PushIcon())
         {
             var glyph = icon.ToIconString();
             var size = Measure(glyph);
@@ -152,29 +166,34 @@ internal static class TextDraw
     public static void SmallCaps(string label, Vector2 pos, Vector4 color)
     {
         using (Fonts.PushCaption())
+        {
             At(Upper(label), pos, color);
+        }
     }
 
     public static Vector2 SmallCapsSize(string label)
     {
         using (Fonts.PushCaption())
+        {
             return Measure(Upper(label));
+        }
     }
 
     public static void SectionTitle(string label, Vector2 pos, Vector4 color)
     {
         using (Fonts.PushHeadline())
+        {
             At(label, pos, color);
+        }
     }
 
     public static Vector2 SectionTitleSize(string label)
     {
         using (Fonts.PushHeadline())
+        {
             return Measure(label);
+        }
     }
 
-    public static float LineHeight()
-    {
-        return ImGui.GetTextLineHeight();
-    }
+    public static float LineHeight() => ImGui.GetTextLineHeight();
 }
