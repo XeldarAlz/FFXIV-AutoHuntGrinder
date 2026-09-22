@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Marks;
 using AutoHuntGrinder.Core.Spawns;
 using AutoHuntGrinder.Core.Travel;
 using ECommons.DalamudServices;
@@ -11,7 +12,7 @@ internal static class ObjectivePlanner
     private static readonly Vector3 unknownAnchor = new(float.NaN);
 
     // A pinned territory stands as it is; otherwise the current territory when a search can find the mob there, else the
-    // busiest territory that can. 0 when none can.
+    // busiest territory that can, else the zone a hunt mark's shared spawn points are in. 0 when none can.
     public static uint TerritoryFor(in HuntObjective objective)
     {
         if (objective.TerritoryId != 0)
@@ -20,16 +21,27 @@ internal static class ObjectivePlanner
         }
 
         uint currentTerritory = Svc.ClientState.TerritoryType;
-        return MobSpawns.TryGetSearchable(objective.NameId, currentTerritory, out _)
-            ? currentTerritory
-            : MobSpawns.FirstSearchableTerritory(objective.NameId);
+        if (MobSpawns.TryGetSearchable(objective.NameId, currentTerritory, out _))
+        {
+            return currentTerritory;
+        }
+
+        var busiest = MobSpawns.FirstSearchableTerritory(objective.NameId);
+        return busiest != 0 ? busiest : HuntMarkZoneOf(objective, 0);
     }
 
     public static bool CanHunt(in HuntObjective objective)
     {
         var territoryId = TerritoryFor(objective);
-        return territoryId != 0 && MobSpawns.TryGetSearchable(objective.NameId, territoryId, out _);
+        return territoryId != 0 && (MobSpawns.TryGetSearchable(objective.NameId, territoryId, out _) || HasHuntSpawns(objective, territoryId));
     }
+
+    public static bool HasHuntSpawns(in HuntObjective objective, uint territoryId) => HuntMarkZoneOf(objective, territoryId) != 0;
+
+    // Only a custom objective is hunted by mark rules, so only one falls back on the spawn points its zone's hunt marks
+    // share; territoryId 0 asks for that zone.
+    private static uint HuntMarkZoneOf(in HuntObjective objective, uint territoryId)
+        => objective.Source == ObjectiveSource.Custom ? HuntSpawns.ZoneOf(objective.NameId, territoryId) : 0;
 
     public static HuntObjective[] Plan(IReadOnlyList<HuntObjective> objectives)
     {
@@ -169,7 +181,16 @@ internal static class ObjectivePlanner
     }
 
     private static Vector3 AnchorOf(in HuntObjective objective)
-        => MobSpawns.TryGetSearchable(objective.NameId, objective.TerritoryId, out var points) ? points[0].Position : unknownAnchor;
+    {
+        if (MobSpawns.TryGetSearchable(objective.NameId, objective.TerritoryId, out var points))
+        {
+            return points[0].Position;
+        }
+
+        return HasHuntSpawns(objective, objective.TerritoryId) && HuntSpawns.TryGetAnchor(objective.NameId, objective.TerritoryId, out var anchor)
+            ? anchor
+            : unknownAnchor;
+    }
 
     // Only X and Z order the plan; an unknown height still leaves a usable anchor.
     private static bool IsKnown(Vector3 anchor) => !float.IsNaN(anchor.X) && !float.IsNaN(anchor.Z);

@@ -183,20 +183,25 @@ internal sealed partial class AutoHuntController
         _                   => activeBills.Length > 0,
     };
 
+    // The movement library fires OnCompleted off the game thread: its await of the task does not return to the framework
+    // scheduler, and the runtime moves the continuation to the thread pool. Recording a run reads the object table, which
+    // Dalamud allows only on the game thread, so the hand-off is moved back there.
     private void RunTask(AutoCommon task, Action onCompleted)
     {
         currentTask = task;
-        Svc.Automation.Start(task, OnCompleted: () =>
-        {
-            if (!ReferenceEquals(currentTask, task))
-            {
-                Diag($"{task.GetType().Name} finished but is no longer the current task (stopped, paused, or superseded); skipping hand-off.");
-                return;
-            }
+        Svc.Automation.Start(task, OnCompleted: () => _ = ECommons.DalamudServices.Svc.Framework.RunOnFrameworkThread(() => HandOff(task, onCompleted)));
+    }
 
-            currentTask = null;
-            onCompleted();
-        });
+    private void HandOff(AutoCommon task, Action onCompleted)
+    {
+        if (!ReferenceEquals(currentTask, task))
+        {
+            Diag($"{task.GetType().Name} finished but is no longer the current task (stopped, paused, or superseded); skipping hand-off.");
+            return;
+        }
+
+        currentTask = null;
+        onCompleted();
     }
 
     private void ClearRun()

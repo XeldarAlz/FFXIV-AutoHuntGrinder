@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Marks;
 using AutoHuntGrinder.Core.Travel;
 using ECommons.DalamudServices;
 using Lumina.Excel.Sheets;
@@ -40,7 +41,21 @@ internal static class RoutePlanner
     public static HuntStop[] Unsupported(IReadOnlyList<HuntBill> bills) => [.. Collect(bills, supported: false)];
 
     public static bool CanHunt(in HuntTarget target)
-        => MarkSpawns.IsSupported(target.TargetRowId) || (target.TerritoryId != 0 && MarkFates.FateIdOf(target.TargetRowId) != 0);
+        => MarkSpawns.IsSupported(target.TargetRowId)
+        || HuntSpawns.Covers(target.NameId, target.TerritoryId)
+        || (target.TerritoryId != 0 && MarkFates.FateIdOf(target.TargetRowId) != 0);
+
+    // The zone a search for the target runs in, with the points its datasets know there: the zone those points are in,
+    // else the bill's own, else the one the hunt mark registry lists the target in.
+    public static uint SearchTerritoryOf(in HuntTarget target, out ReadOnlySpan<Vector3> points)
+    {
+        if (MarkSpawns.TryGet(target.TargetRowId, out var spawnTerritoryId, out points))
+        {
+            return spawnTerritoryId;
+        }
+
+        return target.TerritoryId != 0 ? target.TerritoryId : HuntMarkRegistry.SpawnTerritoryOf(target.NameId);
+    }
 
     private static List<HuntStop> Collect(IReadOnlyList<HuntBill> bills, bool supported)
     {
@@ -70,8 +85,7 @@ internal static class RoutePlanner
                 }
 
                 var fateId = MarkFates.FateIdOf(target.TargetRowId);
-                var hasSpawns = MarkSpawns.TryGet(target.TargetRowId, out var spawnTerritoryId, out _);
-                stops.Add(new HuntStop(bill, target, hasSpawns ? spawnTerritoryId : target.TerritoryId, fateId));
+                stops.Add(new HuntStop(bill, target, SearchTerritoryOf(target, out _), fateId));
             }
         }
 
@@ -244,7 +258,14 @@ internal static class RoutePlanner
     }
 
     private static Vector3 AnchorOf(HuntTarget target)
-        => MarkSpawns.TryGet(target.TargetRowId, out _, out var points) && points.Length > 0 ? points[0] : unknownAnchor;
+    {
+        if (MarkSpawns.TryGet(target.TargetRowId, out _, out var points) && points.Length > 0)
+        {
+            return points[0];
+        }
+
+        return HuntSpawns.TryGetAnchor(target.NameId, target.TerritoryId, out var anchor) ? anchor : unknownAnchor;
+    }
 
     // Only X and Z order the route; an unknown height still leaves a usable anchor.
     private static bool IsKnown(Vector3 anchor) => !float.IsNaN(anchor.X) && !float.IsNaN(anchor.Z);

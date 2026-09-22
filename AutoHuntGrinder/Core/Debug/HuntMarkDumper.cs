@@ -49,7 +49,8 @@ internal static class HuntMarkDumper
             }
 
             count++;
-            if (MobSpawns.IsSearchable(mark.NameId, HuntMarkRegistry.SpawnTerritoryAt(index)))
+            var territoryId = HuntMarkRegistry.SpawnTerritoryAt(index);
+            if (MobSpawns.IsSearchable(mark.NameId, territoryId) || HuntSpawns.Covers(mark.NameId, territoryId))
             {
                 searchable++;
             }

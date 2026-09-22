@@ -211,27 +211,43 @@ public abstract partial class AutoCommon
         }
     }
 
+    // A hunt mark's few reported positions are widened with every spawn point of its rank in its zone.
     private static MarkHuntContext? CreateMarkHunt(HuntBill bill, HuntTarget target, BillStatus startStatus)
     {
         var hasFate = MarkFates.TryGet(target.TargetRowId, out var fate);
-        var hasSpawns = MarkSpawns.TryGet(target.TargetRowId, out var spawnTerritoryId, out var points);
-        if (!hasSpawns && (!hasFate || target.TerritoryId == 0))
+        var territoryId = RoutePlanner.SearchTerritoryOf(target, out var points);
+        var searchPoints = HuntSpawns.Merge(target.NameId, territoryId, points);
+        if (searchPoints.Length == 0 && (!hasFate || target.TerritoryId == 0))
         {
             return null;
         }
 
-        return MarkHuntContext.ForBill(bill, target, startStatus, hasSpawns ? spawnTerritoryId : target.TerritoryId, fate, points.ToArray());
+        return MarkHuntContext.ForBill(bill, target, startStatus, territoryId, fate, searchPoints);
     }
 
+    // A hunt mark stands at one of its zone's spawn points, so those widen its reported positions and replace a sub-area
+    // sweep.
     private static MarkHuntContext? CreateQuarryHunt(in HuntObjective objective, string name, string sourceName)
     {
         var territoryId = ObjectivePlanner.TerritoryFor(objective);
-        if (territoryId == 0 || !MobSpawns.TryGetSearchable(objective.NameId, territoryId, out var points))
+        if (territoryId == 0)
         {
             return null;
         }
 
-        var areaPoints = points[0].Kind == SpawnKind.Area;
+        var hasReports = MobSpawns.TryGetSearchable(objective.NameId, territoryId, out var points);
+        var areaPoints = hasReports && points[0].Kind == SpawnKind.Area;
+        if (ObjectivePlanner.HasHuntSpawns(objective, territoryId))
+        {
+            var reported = areaPoints ? ReadOnlySpan<Vector3>.Empty : PositionsOf(points);
+            return MarkHuntContext.ForQuarry(objective, name, sourceName, territoryId, HuntSpawns.Merge(objective.NameId, territoryId, reported), areaPoints: false);
+        }
+
+        if (!hasReports)
+        {
+            return null;
+        }
+
         var positions = areaPoints ? AreaSweepPoints(points) : PositionsOf(points);
         return MarkHuntContext.ForQuarry(objective, name, sourceName, territoryId, positions, areaPoints);
     }
@@ -386,13 +402,14 @@ public abstract partial class AutoCommon
     // recovery ladder that always makes progress.
     private async Task<MarkLeg> SweepToMarkPoint(MarkHuntContext hunt, Vector3 point, string scope)
     {
+        MarkPhase = HuntPhase.Searching;
+        Status = hunt.SearchLabel;
         var arriveWithin = hunt.ArriveMeters;
         if (WithinReach(point, arriveWithin))
         {
             return MarkLeg.Arrived;
         }
 
-        MarkPhase = HuntPhase.Searching;
         var sighted = false;
         var nextScanAt = 0L;
         var goal = point;

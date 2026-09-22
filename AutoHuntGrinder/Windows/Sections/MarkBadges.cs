@@ -73,10 +73,11 @@ internal static class MarkBadges
         return coverages[markIndex];
     }
 
-    // Points stands for any spawn data a search can use, area labels included; territoryId 0 asks about every zone.
+    // Points stands for any spawn data a search can use, area labels and the zone's shared hunt spawn points included;
+    // territoryId 0 asks about every zone.
     public static SpawnCoverage CoverageIn(uint nameId, uint territoryId)
     {
-        if (MobSpawns.IsSearchable(nameId, territoryId))
+        if (MobSpawns.IsSearchable(nameId, territoryId) || HuntSpawns.Covers(nameId, territoryId))
         {
             return SpawnCoverage.Points;
         }
