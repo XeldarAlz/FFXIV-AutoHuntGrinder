@@ -8,8 +8,6 @@ namespace AutoHuntGrinder.Core.Tasks;
 
 public abstract partial class AutoCommon
 {
-    // The combat flag lingers for a few seconds after the last kill; waiting it out keeps upkeep from being skipped every time.
-    private const int UpkeepCombatClearMs = 15_000;
     private const int UpkeepConsumeWaitMs = 6_000;
     private const int UpkeepConsumeCheckFrames = 100;
     // A failed repair or break tends to fail the same way straight after (no Dark Matter, city not attuned), so it rests first.
@@ -87,12 +85,7 @@ public abstract partial class AutoCommon
             return false;
         }
 
-        if (Svc.Condition[ConditionFlag.InCombat])
-        {
-            Status = "Waiting for combat to clear";
-            await WaitUntilTimed(static () => !Svc.Condition[ConditionFlag.InCombat], UpkeepCombatClearMs, "upkeep-combat-clear");
-        }
-
+        await FightOffAttackers("upkeep");
         if (CancelToken.IsCancellationRequested)
         {
             return false;

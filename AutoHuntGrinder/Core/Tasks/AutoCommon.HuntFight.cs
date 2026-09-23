@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Game.Player;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
 using AutoHuntGrinder.Core.Travel;
@@ -113,7 +114,7 @@ public abstract partial class AutoCommon
             }
         }
 
-        await ClearMarkAggro(scope);
+        await FightOffAttackers(scope);
         if (CheckMarkStanding(hunt) is { } stop)
         {
             return stop;
@@ -304,13 +305,13 @@ public abstract partial class AutoCommon
                 if (KillCounted(progress, baselineKilled))
                 {
                     Diag($"{scope}: the kill counted, {progress.Killed}/{progress.Needed} ({DescribeProgress(hunt)})");
-                    await ClearMarkAggro(scope);
+                    await FightOffAttackers(scope);
                     return MarkFight.Counted;
                 }
 
                 if (!progress.Tracked)
                 {
-                    await ClearMarkAggro(scope);
+                    await FightOffAttackers(scope);
                     return MarkFight.Lost;
                 }
 
@@ -405,7 +406,7 @@ public abstract partial class AutoCommon
         if (counted)
         {
             Diag($"{scope}: {hunt.Name} is down and the kill counted, {progress.Killed}/{progress.Needed}");
-            await ClearMarkAggro(scope);
+            await FightOffAttackers(scope);
             return MarkFight.Counted;
         }
 
@@ -413,14 +414,18 @@ public abstract partial class AutoCommon
         return MarkFight.NotCounted;
     }
 
-    // With the target cleared, the preset's targeting takes whatever is still attacking and nothing else.
-    private async Task ClearMarkAggro(string scope)
+    // Fights back with the preset until the character is out of combat. Every step that needs the character free of
+    // combat runs this first: a mob that has aggroed keeps attacking a character that stands still, so waiting never ends
+    // it. The preset's targeting only switches while the character has no target, and only to a mob on the enemy list, so
+    // a target that is dead or holds no enmity is dropped to let it take an attacker.
+    private protected async Task FightOffAttackers(string scope)
     {
         if (!Svc.Condition[ConditionFlag.InCombat] || IsMarkKnockedOut())
         {
             return;
         }
 
+        EnsureHuntCombatPreset();
         Status = "Fighting off what is still attacking";
         Diag($"{scope}: still in combat ({ConditionTag()}); fighting off whatever is attacking");
         var deadline = Environment.TickCount64 + MarkAggroClearMs;
@@ -441,7 +446,7 @@ public abstract partial class AutoCommon
                 }
 
                 AssertHuntPresetActive();
-                if (Svc.Targets.Target is { IsDead: true })
+                if (Svc.Targets.Target is { } target && (target.IsDead || !EnmityList.Contains(target.EntityId)))
                 {
                     Svc.Targets.Target = null;
                 }

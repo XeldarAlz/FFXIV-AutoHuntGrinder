@@ -344,7 +344,7 @@ public abstract partial class AutoCommon
 
             if (Svc.Condition[ConditionFlag.InCombat])
             {
-                await ClearMarkAggro(scope);
+                await FightOffAttackers(scope);
             }
 
             if (CheckMarkState(hunt) is { } stop)

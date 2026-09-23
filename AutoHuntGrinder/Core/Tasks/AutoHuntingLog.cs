@@ -3,7 +3,6 @@ using AutoHuntGrinder.Core.Game.Ops;
 using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Spawns;
-using Dalamud.Game.ClientState.Conditions;
 using ECommons.DalamudServices;
 using System.Threading.Tasks;
 
@@ -13,7 +12,6 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
 {
     // Five ranks, each normally one or two passes, with room for targets that stay hidden a while.
     private const int MaxPassesPerBook = 25;
-    private const int GearsetCombatClearMs = 30_000;
     // The next rank opens a moment after the last count of the old one lands.
     private const int RankOpenWaitMs = 10_000;
     private const int AchievementLoadWaitMs = 5_000;
@@ -266,7 +264,7 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
         }
     }
 
-    // The class cannot change in combat, so a pull still going gets the time to end first.
+    // The class cannot change in combat, so whatever is still attacking is fought off first.
     private async Task<GearsetSwitchResult> EquipGearset(byte slot)
     {
         Status = $"Changing to {HuntingLogRegistry.BookName(slot)}";
@@ -276,8 +274,7 @@ internal sealed class AutoHuntingLog(IReadOnlyList<byte> slots, AutoHuntSession 
             return result;
         }
 
-        Status = "Waiting for combat to clear to change class";
-        await WaitUntilTimed(static () => !Svc.Condition[ConditionFlag.InCombat], GearsetCombatClearMs, "gearset-combat-clear");
+        await FightOffAttackers("gearset");
         return CancelToken.IsCancellationRequested ? GearsetSwitchResult.Cancelled : await GearsetSwitcher.EquipForSlot(slot, CancelToken);
     }
 

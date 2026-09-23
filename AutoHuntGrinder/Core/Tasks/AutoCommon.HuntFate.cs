@@ -81,7 +81,7 @@ public abstract partial class AutoCommon
             Status = label;
             if (Svc.Condition[ConditionFlag.InCombat])
             {
-                await ClearMarkAggro("fate-wait");
+                await FightOffAttackers("fate-wait");
             }
 
             await DelayMs(MarkFatePollMs);
@@ -124,7 +124,7 @@ public abstract partial class AutoCommon
 
             if (Svc.Condition[ConditionFlag.InCombat])
             {
-                await ClearMarkAggro("fate-fight");
+                await FightOffAttackers("fate-fight");
             }
 
             MarkPhase = HuntPhase.Searching;

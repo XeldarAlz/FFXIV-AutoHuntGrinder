@@ -13,7 +13,7 @@ namespace AutoHuntGrinder.Core.Tasks;
 
 public abstract partial class AutoCommon
 {
-    private const int TeleportCombatClearMs = 30_000;
+    private const int TeleportCastClearMs = 10_000;
     private const int GroundingMoveMs = 20_000;
     private const int ZoneLoadSettleMs = 5_000;
     private const int TeleportRetryBackoffMs = 2_000;
@@ -70,20 +70,23 @@ public abstract partial class AutoCommon
         return tags.Length == 0 ? "grounded" : tags.ToString();
     }
 
-    // Gate for every teleport: stop navigation (being moved blocks the cast), wait out combat, get back onto solid
-    // ground, then dismount. From the air or the water the library spins on a cast that never starts.
+    // Gate for every teleport: stop navigation (being moved blocks the cast), fight off whatever has aggroed since the
+    // game refuses a teleport in combat, let a cast end, get back onto solid ground, then dismount. From the air or the
+    // water the library spins on a cast that never starts.
     internal async Task PrepareForTeleport(string scope)
     {
         NavmeshIPC.Instance.Stop();
-
-        if (Svc.Condition[ConditionFlag.InCombat] || Svc.Condition[ConditionFlag.Casting])
+        await FightOffAttackers(scope);
+        if (CancelToken.IsCancellationRequested)
         {
-            Status = "Waiting for combat to clear before teleporting";
-            Diag($"{scope}: combat or casting ({ConditionTag()}), waiting up to {TeleportCombatClearMs / TimeUnits.MillisecondsPerSecond}s for a castable window");
-            await WaitUntilTimed(
-                () => !Svc.Condition[ConditionFlag.InCombat] && !Svc.Condition[ConditionFlag.Casting],
-                TeleportCombatClearMs,
-                $"{scope}-wait-teleportable");
+            return;
+        }
+
+        if (Svc.Condition[ConditionFlag.Casting])
+        {
+            Status = "Waiting for the cast to end before teleporting";
+            Diag($"{scope}: casting ({ConditionTag()}), waiting up to {TeleportCastClearMs / TimeUnits.MillisecondsPerSecond}s for it to end");
+            await WaitUntilTimed(static () => !Svc.Condition[ConditionFlag.Casting], TeleportCastClearMs, $"{scope}-wait-castable");
         }
 
         if (CancelToken.IsCancellationRequested)

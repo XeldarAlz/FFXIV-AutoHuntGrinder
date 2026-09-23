@@ -21,6 +21,20 @@ public sealed class AutoAfterRun(AfterRunAction action) : AutoCommon
 
     protected override async Task Execute()
     {
+        try
+        {
+            await FinishRun();
+        }
+        finally
+        {
+            ReleaseCombatMovement("after-run");
+        }
+    }
+
+    // A mob still on the character keeps it in combat, where neither the logout nor a clean exit goes through.
+    private async Task FinishRun()
+    {
+        await FightOffAttackers("after-run");
         if (!await WaitUntilTimed(IsSafeToFinish, ReadyWaitMs, "after-run-ready"))
         {
             if (!CancelToken.IsCancellationRequested)
