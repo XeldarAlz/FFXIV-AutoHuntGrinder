@@ -5,6 +5,7 @@
 <h1 align="center">Auto Hunt Grinder</h1>
 
 <p align="center">
+  <a href="https://discord.gg/hppkAvdBEE"><img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white"></a>
   <a href="https://github.com/XeldarAlz/FFXIV-AutoHuntGrinder/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/XeldarAlz/FFXIV-AutoHuntGrinder?style=flat-square&color=blue"></a>
   <a href="https://github.com/XeldarAlz/FFXIV-AutoHuntGrinder/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/XeldarAlz/FFXIV-AutoHuntGrinder/total?style=flat-square&color=blue&cacheSeconds=300"></a>
   <a href="https://github.com/XeldarAlz/FFXIV-AutoHuntGrinder/actions/workflows/release.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/XeldarAlz/FFXIV-AutoHuntGrinder/release.yml?style=flat-square"></a>
@@ -60,6 +61,8 @@ The plugin needs a few helpers for movement and combat to be installed and loade
 | `/ahg config` | Open the Settings page |
 | `/ahg stats` | Open the History page |
 | `/ahg deps` | Open the Plugins page |
+| `/ahg log` | Open the Console page |
+| `/ahg changelog` | Open the Changelog page |
 | `/ahg about` | Open the About page |
 | `/ahg pause` | Pause or resume the current run |
 | `/ahg target` | Log targeted NPC's BaseId (debug helper) |
@@ -70,6 +73,12 @@ The plugin needs a few helpers for movement and combat to be installed and loade
 The windows are available in English, Deutsch, Français, Español, Português (Brasil), Русский, Türkçe, 日本語, and 中文. The plugin picks a language from your Dalamud and game client settings on first launch; change it any time under Settings, General, Language. Game data such as zone, mark, and bill names always follows the game client.
 
 Spotted a wrong or awkward translation? Open a [translation issue](https://github.com/XeldarAlz/FFXIV-AutoHuntGrinder/issues/new?template=translation_report.yml) and tell me what it should say instead.
+
+## Community
+
+Questions, ideas, or just want to hang out with other players? Come say hi on Discord.
+
+→ [Join our Discord](https://discord.gg/hppkAvdBEE)
 
 ## More from me
 
