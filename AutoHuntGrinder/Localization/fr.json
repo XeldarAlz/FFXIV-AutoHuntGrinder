@@ -237,7 +237,7 @@
   "changelog.new": "Nouveau",
   "changelog.changes.one": "{0} changement",
   "changelog.changes.other": "{0} changements",
-  "changelog.r1610.1": "Correction du Mage rouge qui restait immobile face à une cible avec 3 charges de mana",
+  "changelog.r1700.1": "Correction du Mage rouge qui restait immobile face à une cible avec 3 charges de mana",
   "changelog.r1600.1": "Ajout de la page Console pour consulter, filtrer et copier les journaux du plugin",
   "changelog.r1600.2": "Ajout de ce journal des modifications, avec un badge dès qu'une mise à jour apporte du nouveau",
   "changelog.r1600.3": "Refonte complète de la page À propos, avec le nouveau lien Discord",

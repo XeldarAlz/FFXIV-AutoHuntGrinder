@@ -237,7 +237,7 @@
   "changelog.new": "New",
   "changelog.changes.one": "{0} change",
   "changelog.changes.other": "{0} changes",
-  "changelog.r1610.1": "Fixed Red Mage standing idle at a mark while holding 3 mana stacks",
+  "changelog.r1700.1": "Fixed Red Mage standing idle at a mark while holding 3 mana stacks",
   "changelog.r1600.1": "Added the Console page to view, filter and copy the plugin's logs",
   "changelog.r1600.2": "Added this changelog, with a badge whenever an update brings something new",
   "changelog.r1600.3": "Overhauled the About page, with the updated Discord link",
