@@ -237,6 +237,7 @@
   "changelog.new": "新着",
   "changelog.changes.one": "{0}件の変更",
   "changelog.changes.other": "{0}件の変更",
+  "changelog.r1610.1": "マナスタックが3つある状態で赤魔道士が討伐対象の前で止まってしまう問題を修正",
   "changelog.r1600.1": "プラグインのログを表示、絞り込み、コピーできるコンソールを追加",
   "changelog.r1600.2": "この更新履歴を追加。新しい更新があるとバッジで知らせます",
   "changelog.r1600.3": "情報ページを全面刷新し、Discordのリンクを更新",

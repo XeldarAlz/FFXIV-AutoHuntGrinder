@@ -237,6 +237,7 @@
   "changelog.new": "Nuevo",
   "changelog.changes.one": "{0} cambio",
   "changelog.changes.other": "{0} cambios",
+  "changelog.r1610.1": "Corregido el Mago rojo que se quedaba quieto ante una presa con 3 cargas de maná",
   "changelog.r1600.1": "Añadida la página Consola para ver, filtrar y copiar los registros del plugin",
   "changelog.r1600.2": "Añadido este registro de cambios, con un aviso cada vez que una actualización trae novedades",
   "changelog.r1600.3": "Renovada por completo la página Acerca de, con el enlace de Discord actualizado",

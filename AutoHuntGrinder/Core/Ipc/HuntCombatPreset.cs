@@ -9,22 +9,26 @@ namespace AutoHuntGrinder.Core.Ipc;
 // the character has no target: the targeted mark keeps focus, and whatever is still attacking takes over once it is dead.
 // Every rotation uses the player's target and a single-target rotation with no multi-target actions, so an area attack
 // cannot pull a mob standing next to the mark. FATE targeting and FATE sync stay off; a FATE-bound hunt syncs itself.
+// Red Mage is the exception: its finishers are area attacks, and under ForceST it never casts them, yet it holds every other
+// GCD while three mana stacks wait for one, so it stands idle for good, in and out of combat. ST lets it cast them when no
+// idle mob stands in their area, and Break keeps the rest of the rotation going while one does.
 // Pathfind movement lets the combat plugin close to range and dodge once the fight is on.
 internal static class HuntCombatPreset
 {
     public const string Name = "Auto Hunt Grinder";
 
-    public const int Revision = 1;
+    public const int Revision = 2;
 
     private const string AutoTargetModule = "BossMod.Autorotation.MiscAI.AutoTarget";
     private const string NormalMovementModule = "BossMod.Autorotation.MiscAI.NormalMovement";
     private const string WarriorModule = "BossMod.Autorotation.VeynWAR";
     private const string RotationModulePrefix = "BossMod.Autorotation.xan.";
+    private const string RedMageModule = RotationModulePrefix + "RDM";
 
     private static readonly string[] rotationJobs =
     [
         "AST", "BLM", "BRD", "BST", "DNC", "DRG", "DRK", "GNB", "MCH", "MNK", "NIN",
-        "PCT", "PLD", "RDM", "RPR", "SAM", "SCH", "SGE", "SMN", "VPR", "WHM",
+        "PCT", "PLD", "RPR", "SAM", "SCH", "SGE", "SMN", "VPR", "WHM",
     ];
 
     private static readonly string[] roleModules = ["Caster", "HealerAI", "MeleeAI", "RangedAI", "TankAI"];
@@ -39,6 +43,7 @@ internal static class HuntCombatPreset
     private static readonly PresetTrack[] movementTracks = [new("Destination", "Pathfind")];
     private static readonly PresetTrack[] warriorTracks = [new("AOE", "SingleTarget")];
     private static readonly PresetTrack[] rotationTracks = [new("Targeting", "Manual"), new("AOE", "ForceST")];
+    private static readonly PresetTrack[] redMageTracks = [new("Targeting", "Manual"), new("AOE", "ST"), new("Combo", "Break")];
 
     private static string? serialized;
 
@@ -59,6 +64,8 @@ internal static class HuntCombatPreset
             {
                 WriteModule(writer, RotationModulePrefix + rotationJobs[jobIndex], rotationTracks);
             }
+
+            WriteModule(writer, RedMageModule, redMageTracks);
 
             for (var roleIndex = 0; roleIndex < roleModules.Length; roleIndex++)
             {

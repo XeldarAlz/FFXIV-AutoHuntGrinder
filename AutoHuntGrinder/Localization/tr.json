@@ -237,6 +237,7 @@
   "changelog.new": "Yeni",
   "changelog.changes.one": "{0} değişiklik",
   "changelog.changes.other": "{0} değişiklik",
+  "changelog.r1610.1": "Kızıl Büyücü'nün 3 mana yüküyle hedefin önünde boşta beklemesi düzeltildi",
   "changelog.r1600.1": "Eklentinin günlüklerini görüntülemek, filtrelemek ve kopyalamak için Konsol sayfası eklendi",
   "changelog.r1600.2": "Bu değişiklik günlüğü eklendi; bir güncelleme yenilik getirdiğinde rozetle bildirir",
   "changelog.r1600.3": "Hakkında sayfası baştan yenilendi, Discord bağlantısı güncellendi",

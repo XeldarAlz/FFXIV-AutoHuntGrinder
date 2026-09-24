@@ -237,6 +237,7 @@
   "changelog.new": "Neu",
   "changelog.changes.one": "{0} Änderung",
   "changelog.changes.other": "{0} Änderungen",
+  "changelog.r1610.1": "Behoben: Rotmagier blieb mit 3 Mana-Stapeln untätig vor einem Ziel stehen",
   "changelog.r1600.1": "Konsole hinzugefügt, um die Protokolle des Plugins anzusehen, zu filtern und zu kopieren",
   "changelog.r1600.2": "Dieses Änderungsprotokoll hinzugefügt, mit einem Hinweis, sobald ein Update Neues bringt",
   "changelog.r1600.3": "Die Info-Seite komplett überarbeitet, mit dem neuen Discord-Link",

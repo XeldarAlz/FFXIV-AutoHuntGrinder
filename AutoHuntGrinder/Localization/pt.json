@@ -237,6 +237,7 @@
   "changelog.new": "Novo",
   "changelog.changes.one": "{0} mudança",
   "changelog.changes.other": "{0} mudanças",
+  "changelog.r1610.1": "Corrigido o Mago Vermelho que ficava parado diante de um alvo com 3 cargas de mana",
   "changelog.r1600.1": "Adicionada a página Console para ver, filtrar e copiar os logs do plugin",
   "changelog.r1600.2": "Adicionado este registro de mudanças, com um aviso sempre que uma atualização trouxer novidades",
   "changelog.r1600.3": "Página Sobre totalmente reformulada, com o link do Discord atualizado",

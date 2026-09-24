@@ -260,6 +260,11 @@ internal static partial class L
         public static readonly LocString New = new("changelog.new", "New");
         public static readonly LocPlural Changes = new("changelog.changes", "{0} change", "{0} changes");
 
+        public static readonly LocString[] Release1610 =
+        [
+            new("changelog.r1610.1", "Fixed Red Mage standing idle at a mark while holding 3 mana stacks"),
+        ];
+
         public static readonly LocString[] Release1600 =
         [
             new("changelog.r1600.1", "Added the Console page to view, filter and copy the plugin's logs"),
