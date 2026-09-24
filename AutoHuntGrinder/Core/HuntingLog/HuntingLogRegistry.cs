@@ -231,7 +231,7 @@ internal static class HuntingLogRegistry
                 }
             }
 
-            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunting Log registry: {books.Count} logs, {entries.Count} entries, {targets.Count} targets, {zones.Count} zones ({unresolvedZones} listed zones matched no open-world territory)");
+            RunLog.Info($"Hunting Log registry: {books.Count} logs, {entries.Count} entries, {targets.Count} targets, {zones.Count} zones ({unresolvedZones} listed zones matched no open-world territory)");
             return new Tables
             {
                 Books = [.. books],

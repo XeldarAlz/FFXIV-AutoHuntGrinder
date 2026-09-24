@@ -42,7 +42,7 @@ internal sealed partial class AutoHuntController
     public IReadOnlyList<HuntObjective> Objectives => progress.Objectives;
 
     private static void Diag(string message)
-        => ECommons.DalamudServices.Svc.Log.Info($"{AhgConstants.LogPrefix} {message}");
+        => RunLog.Info(message);
 
     public void Start(IReadOnlyList<HuntBill> bills)
     {

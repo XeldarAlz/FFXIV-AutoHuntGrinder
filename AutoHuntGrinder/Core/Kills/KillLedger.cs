@@ -741,5 +741,5 @@ internal sealed unsafe class KillLedger : IDisposable
         }
     }
 
-    private static void Diag(string message) => Svc.Log.Info($"{AhgConstants.LogPrefix} {message}");
+    private static void Diag(string message) => RunLog.Info(message);
 }

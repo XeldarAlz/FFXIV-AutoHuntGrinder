@@ -1,5 +1,4 @@
 using ECommons;
-using ECommons.DalamudServices;
 using ECommons.Throttlers;
 using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Component.GUI;
@@ -90,5 +89,5 @@ internal static unsafe class DialogDriver
         => GenericHelpers.TryGetAddonByName(name, out addon) && GenericHelpers.IsAddonReady(addon);
 
     private static void Diag(string message)
-        => Svc.Log.Info($"{AhgConstants.LogPrefix} {message}");
+        => RunLog.Info(message);
 }

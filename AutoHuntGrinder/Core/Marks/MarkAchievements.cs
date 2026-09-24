@@ -65,7 +65,7 @@ internal static class MarkAchievements
             var source = Sources[sourceIndex];
             if (!sheet.TryGetRow(source.AchievementId, out var row))
             {
-                Svc.Log.Warning($"{AhgConstants.LogPrefix} Mark achievements: achievement {source.AchievementId} is not in the sheet; dropped");
+                RunLog.Warning($"Mark achievements: achievement {source.AchievementId} is not in the sheet; dropped");
                 continue;
             }
 
@@ -74,7 +74,7 @@ internal static class MarkAchievements
             var markCount = marks.Count - firstMark;
             if (markCount == 0 || markCount != row.Key.RowId)
             {
-                Svc.Log.Warning($"{AhgConstants.LogPrefix} Mark achievements: {source.AchievementId} asks for {row.Key.RowId} marks but rank {source.Rank} in its zones has {markCount}; dropped");
+                RunLog.Warning($"Mark achievements: {source.AchievementId} asks for {row.Key.RowId} marks but rank {source.Rank} in its zones has {markCount}; dropped");
                 marks.RemoveRange(firstMark, markCount);
                 continue;
             }
@@ -82,7 +82,7 @@ internal static class MarkAchievements
             achievements.Add(new MarkAchievement(source.AchievementId, source.Rank, marks[firstMark].Expansion, row.Name.ExtractText(), row.Icon, (ushort)firstMark, (byte)markCount));
         }
 
-        Svc.Log.Info($"{AhgConstants.LogPrefix} Mark achievements: {achievements.Count} of {Sources.Length} resolved over {marks.Count} marks");
+        RunLog.Info($"Mark achievements: {achievements.Count} of {Sources.Length} resolved over {marks.Count} marks");
         return new Resolved([.. achievements], [.. marks]);
     }
 

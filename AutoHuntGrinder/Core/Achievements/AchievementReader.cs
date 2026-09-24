@@ -58,7 +58,7 @@ internal static unsafe class AchievementReader
         }
 
         loadRequestedAtTick = now;
-        Svc.Log.Info($"{AhgConstants.LogPrefix} Achievements: requesting the completion list from the server");
+        RunLog.Info("Achievements: requesting the completion list from the server");
         achievement->RequestCompletedAchievements();
         return true;
     }
@@ -79,7 +79,7 @@ internal static unsafe class AchievementReader
 
         progressRequestId = achievementId;
         progressRequestedAtTick = now;
-        Svc.Log.Info($"{AhgConstants.LogPrefix} Achievements: requesting progress for achievement {achievementId}");
+        RunLog.Info($"Achievements: requesting progress for achievement {achievementId}");
         achievement->RequestAchievementProgress(achievementId);
         return true;
     }
@@ -141,7 +141,7 @@ internal static unsafe class AchievementReader
             return true;
         }
 
-        Svc.Log.Info($"{AhgConstants.LogPrefix} Achievements: no progress answer for achievement {progressRequestId} within {ProgressTimeoutMs / TimeUnits.MillisecondsPerSecond}s; dropping the request");
+        RunLog.Info($"Achievements: no progress answer for achievement {progressRequestId} within {ProgressTimeoutMs / TimeUnits.MillisecondsPerSecond}s; dropping the request");
         progressRequestId = 0;
         return false;
     }

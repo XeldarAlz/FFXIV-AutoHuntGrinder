@@ -201,6 +201,8 @@ public sealed class AutoHuntSession
         }
 
         EndedWithFault = true;
+        // clib's task runner writes the same exception to dalamud.log when the task unwinds.
+        RunLog.Record(RunLogLevel.Error, exception, "The hunt task ended with an unexpected error");
     }
 
     internal void ClearFault() => EndedWithFault = false;

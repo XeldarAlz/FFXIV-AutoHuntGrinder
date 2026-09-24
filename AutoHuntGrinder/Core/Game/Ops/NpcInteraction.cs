@@ -180,7 +180,7 @@ internal static unsafe class NpcInteraction
             return false;
         }
 
-        Svc.Log.Debug($"{AhgConstants.LogPrefix} SelectString: choosing entry {entryIndex}");
+        RunLog.Debug($"SelectString: choosing entry {entryIndex}");
         Callback.Fire(addon, true, entryIndex);
         return true;
     }
@@ -223,7 +223,7 @@ internal static unsafe class NpcInteraction
             return false;
         }
 
-        Svc.Log.Debug($"{AhgConstants.LogPrefix} {addonName}: firing callback {value}");
+        RunLog.Debug($"{addonName}: firing callback {value}");
         Callback.Fire(addon, true, value);
         return true;
     }

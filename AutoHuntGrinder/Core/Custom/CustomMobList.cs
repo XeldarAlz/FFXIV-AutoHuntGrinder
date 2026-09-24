@@ -1,7 +1,6 @@
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Kills;
 using AutoHuntGrinder.Core.Marks;
-using ECommons.DalamudServices;
 
 namespace AutoHuntGrinder.Core.Custom;
 
@@ -168,7 +167,7 @@ internal static class CustomMobList
         }
 
         entry.Killed++;
-        Svc.Log.Info($"{AhgConstants.LogPrefix} Custom list: entry {index} (BNpcName {nameId}) now {entry.Killed}/{entry.Needed}");
+        RunLog.Info($"Custom list: entry {index} (BNpcName {nameId}) now {entry.Killed}/{entry.Needed}");
         Configuration.SaveDebounced();
     }
 

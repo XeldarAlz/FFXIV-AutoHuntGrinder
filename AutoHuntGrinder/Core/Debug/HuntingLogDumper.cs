@@ -108,5 +108,5 @@ internal static unsafe class HuntingLogDumper
 
     private static string SlotText(byte slot) => slot == HuntingLogRegistry.NoLog ? "none" : slot.ToString();
 
-    private static void Log(string message) => Svc.Log.Info($"{AhgConstants.LogPrefix} [HuntingLogDump] {message}");
+    private static void Log(string message) => RunLog.Info(message);
 }

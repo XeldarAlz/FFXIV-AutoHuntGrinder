@@ -154,7 +154,7 @@ internal static class GearsetSwitcher
             return true;
         }
 
-        Svc.Log.Warning($"{AhgConstants.LogPrefix} Gearset: the game refused gearset {gearsetIndex + 1} (EquipGearset returned {result})");
+        RunLog.Warning($"Gearset: the game refused gearset {gearsetIndex + 1} (EquipGearset returned {result})");
         return false;
     }
 
@@ -169,5 +169,5 @@ internal static class GearsetSwitcher
         return string.IsNullOrEmpty(abbreviation) ? $"class {classJobId}" : abbreviation;
     }
 
-    private static void Log(string message) => Svc.Log.Info($"{AhgConstants.LogPrefix} {message}");
+    private static void Log(string message) => RunLog.Info(message);
 }

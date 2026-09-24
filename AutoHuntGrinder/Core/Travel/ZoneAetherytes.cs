@@ -367,7 +367,7 @@ internal static class ZoneAetherytes
         }
         catch (Exception exception)
         {
-            Svc.Log.Warning(exception, $"{AhgConstants.LogPrefix} Could not resolve a position for aetheryte {row.RowId}; skipping it as a travel target");
+            RunLog.Warning(exception, $"Could not resolve a position for aetheryte {row.RowId}; skipping it as a travel target");
             position = default;
             return false;
         }

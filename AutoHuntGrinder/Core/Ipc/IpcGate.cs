@@ -1,10 +1,10 @@
-using ECommons.DalamudServices;
+using System.Runtime.CompilerServices;
 
 namespace AutoHuntGrinder.Core.Ipc;
 
 internal static class IpcGate
 {
-    public static T Invoke<T>(bool hasFunction, Func<T> call, T fallback, string label)
+    public static T Invoke<T>(bool hasFunction, Func<T> call, T fallback, string label, [CallerFilePath] string callerFile = "")
     {
         if (!hasFunction)
         {
@@ -17,12 +17,12 @@ internal static class IpcGate
         }
         catch (Exception exception)
         {
-            Svc.Log.Warning(exception, label);
+            RunLog.Warning(exception, label, callerFile);
             return fallback;
         }
     }
 
-    public static void Run(bool hasFunction, Action call, string label)
+    public static void Run(bool hasFunction, Action call, string label, [CallerFilePath] string callerFile = "")
     {
         if (!hasFunction)
         {
@@ -35,7 +35,7 @@ internal static class IpcGate
         }
         catch (Exception exception)
         {
-            Svc.Log.Warning(exception, label);
+            RunLog.Warning(exception, label, callerFile);
         }
     }
 }

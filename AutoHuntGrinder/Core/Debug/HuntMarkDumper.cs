@@ -140,5 +140,5 @@ internal static class HuntMarkDumper
         return MobSpawns.IsFateOnly(mark.NameId, mark.TerritoryId) ? "FATE points only" : "no points";
     }
 
-    private static void Log(string message) => Svc.Log.Info($"{AhgConstants.LogPrefix} [HuntMarkDump] {message}");
+    private static void Log(string message) => RunLog.Info(message);
 }

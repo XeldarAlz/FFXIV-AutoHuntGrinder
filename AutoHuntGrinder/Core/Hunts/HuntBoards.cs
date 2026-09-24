@@ -184,12 +184,12 @@ internal static class HuntBoards
             var board = boards[boardIndex];
             if (!positionFound[boardIndex])
             {
-                Svc.Log.Warning($"{AhgConstants.LogPrefix} Hunt board {board.ObjectId} has no Level row in territory {board.TerritoryId}; its bills cannot be picked up");
+                RunLog.Warning($"Hunt board {board.ObjectId} has no Level row in territory {board.TerritoryId}; its bills cannot be picked up");
                 continue;
             }
 
             var position = positions[boardIndex];
-            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunt board {board.ObjectId} in {TerritoryNames.Of(board.TerritoryId)} stands at ({position.X:F1}, {position.Y:F1}, {position.Z:F1})");
+            RunLog.Info($"Hunt board {board.ObjectId} in {TerritoryNames.Of(board.TerritoryId)} stands at ({position.X:F1}, {position.Y:F1}, {position.Z:F1})");
         }
     }
 
@@ -224,7 +224,7 @@ internal static class HuntBoards
         }
         catch (Exception exception)
         {
-            Svc.Log.Warning(exception, $"{AhgConstants.LogPrefix} Could not read the hunt board menu; tiers will be chosen by their place in the menu");
+            RunLog.Warning(exception, "Could not read the hunt board menu; tiers will be chosen by their place in the menu");
         }
 
         return texts;

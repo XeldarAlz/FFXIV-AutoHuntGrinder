@@ -118,7 +118,7 @@ internal static class MarkAchievementBoard
                 readings[slot] = new ProgressReading(current, max);
             }
 
-            Svc.Log.Info($"{AhgConstants.LogPrefix} Mark achievements: achievement {pendingAchievementId} progress {current}/{max}");
+            RunLog.Info($"Mark achievements: achievement {pendingAchievementId} progress {current}/{max}");
             pendingAchievementId = 0;
             return;
         }
@@ -463,7 +463,7 @@ internal static class MarkAchievementBoard
             }
         }
 
-        Svc.Log.Info($"{AhgConstants.LogPrefix} Mark achievements: added {added} of {marks.Length} marks from {achievement.Name} ({achievement.AchievementId}) to the custom list");
+        RunLog.Info($"Mark achievements: added {added} of {marks.Length} marks from {achievement.Name} ({achievement.AchievementId}) to the custom list");
     }
 
     private static void DrawProgressBar(int index, in MarkAchievement achievement, bool complete, Vector2 origin, Vector2 end)

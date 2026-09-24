@@ -109,6 +109,6 @@ internal static class SpawnDumper
     private static void Report(string message)
     {
         Svc.Chat.Print($"{AhgConstants.LogPrefix} {message}");
-        Svc.Log.Info($"{AhgConstants.LogPrefix} [SpawnDumper] {message}");
+        RunLog.Info(message);
     }
 }

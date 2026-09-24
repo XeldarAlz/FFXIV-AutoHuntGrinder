@@ -168,7 +168,7 @@ internal static unsafe class HuntingLogReader
         if (recordsRefusedLogged)
         {
             recordsRefusedLogged = false;
-            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunting Log: the rank records line up again");
+            RunLog.Info("Hunting Log: the rank records line up again");
         }
 
         return true;
@@ -179,7 +179,7 @@ internal static unsafe class HuntingLogReader
         if (!recordsRefusedLogged)
         {
             recordsRefusedLogged = true;
-            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunting Log: {reason}; treating every log as unavailable until the records line up");
+            RunLog.Info($"Hunting Log: {reason}; treating every log as unavailable until the records line up");
         }
 
         return false;

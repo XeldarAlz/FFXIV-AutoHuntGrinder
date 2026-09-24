@@ -50,7 +50,7 @@ internal sealed class GmAlertWatcher : IDisposable
                 }
                 catch (Exception exception)
                 {
-                    Svc.Log.Debug($"{AhgConstants.LogPrefix} Console.Beep failed: {exception.Message}");
+                    RunLog.Debug($"Console.Beep failed: {exception.Message}");
                     break;
                 }
             }
@@ -118,7 +118,7 @@ internal sealed class GmAlertWatcher : IDisposable
     private static void FireAlerts(Configuration configuration, IPlayerCharacter gm)
     {
         var name = gm.Name.TextValue;
-        Svc.Log.Warning($"{AhgConstants.LogPrefix} GM detected nearby: {name} (OnlineStatus {gm.OnlineStatus.RowId}). Firing the GM alert.");
+        RunLog.Warning($"GM detected nearby: {name} (OnlineStatus {gm.OnlineStatus.RowId}). Firing the GM alert.");
 
         if (configuration.GmAlertStopRun)
         {
@@ -162,7 +162,7 @@ internal sealed class GmAlertWatcher : IDisposable
         }
         catch (Exception exception)
         {
-            Svc.Log.Warning(exception, $"{AhgConstants.LogPrefix} GM alert: {what} threw.");
+            RunLog.Warning(exception, $"GM alert: {what} threw.");
         }
     }
 }

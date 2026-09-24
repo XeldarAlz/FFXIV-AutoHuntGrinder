@@ -182,7 +182,7 @@ internal static class HuntMarkRegistry
             }
 
             var displayOrder = BuildDisplayOrder(byName, expansionWide);
-            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunt mark registry: {count} marks over {zoneKeys.Count} open-world zones ({repeatedNames.Count} expansion-wide); {repeatListings} repeated listings skipped");
+            RunLog.Info($"Hunt mark registry: {count} marks over {zoneKeys.Count} open-world zones ({repeatedNames.Count} expansion-wide); {repeatListings} repeated listings skipped");
             return new Tables
             {
                 Marks = marks,
@@ -240,7 +240,7 @@ internal static class HuntMarkRegistry
             var nameId = monster.BNpcName.RowId;
             if (monster.Rank < (byte)HuntMarkRank.B || monster.Rank > (byte)HuntMarkRank.S)
             {
-                Svc.Log.Warning($"{AhgConstants.LogPrefix} Hunt mark registry: NotoriousMonster {monster.RowId} (BNpcName {nameId}) has rank {monster.Rank}, not B, A or S; skipped");
+                RunLog.Warning($"Hunt mark registry: NotoriousMonster {monster.RowId} (BNpcName {nameId}) has rank {monster.Rank}, not B, A or S; skipped");
                 return;
             }
 
@@ -263,7 +263,7 @@ internal static class HuntMarkRegistry
                 return;
             }
 
-            Svc.Log.Info($"{AhgConstants.LogPrefix} Hunt mark registry: BNpcName {nameId} is listed again in territory {territoryId}; it keeps territory {territoryByName[nameId]} and further listings are skipped");
+            RunLog.Info($"Hunt mark registry: BNpcName {nameId} is listed again in territory {territoryId}; it keeps territory {territoryByName[nameId]} and further listings are skipped");
         }
 
         private string ZoneKey(ushort territoryId, string zoneName)

@@ -92,7 +92,7 @@ internal static class StuckDetector
                 return false;
             }
 
-            Svc.Log.Info($"{AhgConstants.LogPrefix} {label} stalled ({kind}); aborting the move");
+            RunLog.Info($"{label} stalled ({kind}); aborting the move");
             return true;
         };
     }
@@ -154,7 +154,7 @@ internal static class StuckDetector
                 return false;
             }
 
-            Svc.Log.Info($"{AhgConstants.LogPrefix} {label} froze in the air for {AirborneFreezeMs}ms at {position}; aborting the descent");
+            RunLog.Info($"{label} froze in the air for {AirborneFreezeMs}ms at {position}; aborting the descent");
             return true;
         };
     }
