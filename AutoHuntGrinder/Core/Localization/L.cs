@@ -260,6 +260,16 @@ internal static partial class L
         public static readonly LocString New = new("changelog.new", "New");
         public static readonly LocPlural Changes = new("changelog.changes", "{0} change", "{0} changes");
 
+        public static readonly LocString[] Release1800 =
+        [
+            new("changelog.r1800.1", "Added hunting other marks while a FATE mark's FATE is down, with new FATE settings under Settings > General"),
+            new("changelog.r1800.2", "FATE zones are now checked from the start of each pass, so more of the wait is spent hunting other marks"),
+            new("changelog.r1800.3", "Fixed a FATE that started late being abandoned in the middle of the fight"),
+            new("changelog.r1800.4", "Fixed the character getting stuck under water after diving toward a mark in The Ruby Sea"),
+            new("changelog.r1800.5", "Fixed a teleport loop at underwater aetherytes such as Tamamizu"),
+            new("changelog.r1800.6", "Improved picking the nearest aetheryte in zones high above or below sea level"),
+        ];
+
         public static readonly LocString[] Release1700 =
         [
             new("changelog.r1700.1", "Fixed Red Mage standing idle at a mark while holding 3 mana stacks"),
