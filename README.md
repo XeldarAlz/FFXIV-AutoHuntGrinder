@@ -18,6 +18,10 @@
 
 ---
 
+<p align="center">
+  <img src="AutoHuntGrinder/Images/demo.gif" alt="Auto Hunt Grinder demo" />
+</p>
+
 ## What it does
 
 Lists every daily and weekly hunt bill from A Realm Reborn through Dawntrail in one window. Tick the bills you want and press **Start**: the plugin travels to each hunt board you still need a bill from, accepts it, then teleports and flies to every mark on your bills, fights it, and moves on until each bill is done.
