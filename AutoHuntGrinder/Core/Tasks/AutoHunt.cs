@@ -8,7 +8,8 @@ namespace AutoHuntGrinder.Core.Tasks;
 // Each pass takes the posted bills and hunts the planned route, and the next pass plans again: a finished old bill frees
 // the fresh one on the board, and a mark that stayed hidden gets another look. A pass that picks up nothing and credits no
 // kill ends the run, so a mark that cannot be found does not keep it going. A FATE mark whose FATE is not up does not hold
-// up the route: the run looks in on its zone between other marks and waits there only once nothing else is left.
+// up the route: the run looks in on its zone between other marks, from the start of the pass, and waits there only once
+// nothing else is left.
 internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession session, HuntProgress progress) : AutoCommon
 {
     private const int MaxHuntPasses = 5;
@@ -198,6 +199,11 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
         fateWaits.Clear();
         deferredFates.Clear();
         var settings = FateWaitSettings.Read();
+        if (settings.HuntsOthers)
+        {
+            QueueFateLookIns(route, settings);
+        }
+
         var visit = 0;
         while (TakeNextStop(route, out var stop))
         {
@@ -252,6 +258,30 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
 
         ReportRouteDone();
         return true;
+    }
+
+    // A FATE is only caught while it runs, so the more looks it gets while other marks still fill the time between them,
+    // the less waiting is left at the end. Every FATE mark is therefore due for a look from the start of the pass instead
+    // of at its place in the route, the earliest in the route first.
+    private void QueueFateLookIns(List<HuntStop> route, in FateWaitSettings settings)
+    {
+        for (var stopIndex = 0; stopIndex < route.Count; stopIndex++)
+        {
+            var stop = route[stopIndex];
+            if (!stop.IsFateBound)
+            {
+                continue;
+            }
+
+            if (!fateWaits.ContainsKey(stop.FateId))
+            {
+                fateWaits.Add(stop.FateId, new MarkFateWait(settings.BudgetMs, rotates: true));
+            }
+
+            deferredFates.Add(stop);
+            route.RemoveAt(stopIndex);
+            stopIndex--;
+        }
     }
 
     // A FATE that is up where the character stands comes first, since it may be gone by the time the route comes back.
