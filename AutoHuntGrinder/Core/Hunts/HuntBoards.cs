@@ -119,7 +119,7 @@ internal static class HuntBoards
                 continue;
             }
 
-            var walk = Vector3.DistanceSquared(aetheryte.Position, position);
+            var walk = GroundDistance.SquaredBetween(aetheryte.Position, position);
             if (walk >= bestWalk)
             {
                 continue;

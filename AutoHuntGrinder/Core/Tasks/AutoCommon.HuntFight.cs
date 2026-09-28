@@ -216,10 +216,9 @@ public abstract partial class AutoCommon
             }
 
             var stopAt = plan.Rides ? MarkLandingMeters : approach;
-            var legMovement = MovementFor(plan.Mode, MarkLegTolerance(plan.Target, live, stopAt));
             Diag($"{legScope}: going {plan.Mode} toward {hunt.Name}, {live.DistanceToHitbox:F0}m out");
             var startedAt = Environment.TickCount64;
-            var operation = new MoveOp(move => move.MoveInZone(plan.Target, legMovement, StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel)));
+            var operation = LegOperation(plan.Mode, plan.Target, MarkLegTolerance(plan.Target, live, stopAt), StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel));
             var completed = await RunCancellable(operation, MarkApproachWatchdogMs, legScope, StuckDetector.MoveStallAbort(legScope));
             if (operation.Fault is { } fault)
             {
@@ -480,8 +479,7 @@ public abstract partial class AutoCommon
         HoldCombatMovement(scope);
         try
         {
-            var legMovement = walkMovement.WithTolerance(MarkLegTolerance(destination, live, approach));
-            var operation = new MoveOp(move => move.MoveInZone(destination, legMovement, StopWhenMarkWithin(markId, approach, destination, hunt.FightLabel)));
+            var operation = LegOperation(StepMode(), destination, MarkLegTolerance(destination, live, approach), StopWhenMarkWithin(markId, approach, destination, hunt.FightLabel));
             await RunCancellable(operation, MarkRepositionWatchdogMs, scope, StuckDetector.MoveStallAbort(scope));
             if (operation.Fault is { } fault)
             {

@@ -51,14 +51,20 @@ public abstract partial class AutoCommon
     private const float UnstickSideStepMeters = 4f;
     private const float UnstickSideStepHalfExtentMeters = 3f;
     private const float AetheryteFloorHalfExtentMeters = 10f;
+    private const float SurfaceSearchHalfExtentMeters = 5f;
+    private const float SurfaceArriveMeters = 3f;
+    private const int SurfaceWatchdogMs = 60_000;
 
     private bool outsideMovementWarned;
+    private Vector3? teleportLanding;
+    private uint teleportLandingTerritoryId;
+    private bool teleportLandingTrustLogged;
 
     private enum ZoneTravelResult { Arrived, Failed, LeftZone }
 
     private enum LegOutcome { EndedShort, Stalled, Faulted, MountFailed, Remount, FalseStart }
 
-    private enum TeleportPurpose { Shortcut, Recovery, OffMesh }
+    private enum TeleportPurpose { Shortcut, Recovery, OffMesh, Water }
 
     protected async Task<bool> TravelTo(uint territoryId, Vector3 destination, float arriveWithin, bool groundStalled = false)
     {
@@ -71,9 +77,14 @@ public abstract partial class AutoCommon
                 return false;
             }
 
-            if (Svc.ClientState.TerritoryType != territoryId && !await EnterTerritory(territoryId, destination, zoneName))
+            if (Svc.ClientState.TerritoryType != territoryId)
             {
-                return false;
+                if (!await EnterTerritory(territoryId, destination, zoneName))
+                {
+                    return false;
+                }
+
+                await NoteTeleportLanding();
             }
 
             var result = await TravelWithinZone(territoryId, destination, arriveWithin, zoneName, groundStalled);
@@ -153,6 +164,7 @@ public abstract partial class AutoCommon
         var falseStarts = 0;
         var landmassTeleports = 0;
         var teleportRecoveryUsed = false;
+        var waterEscapeUsed = false;
         for (var leg = 1; ; leg++)
         {
             if (CancelToken.IsCancellationRequested)
@@ -228,6 +240,18 @@ public abstract partial class AutoCommon
             stalls++;
             if (stalls >= MaxTravelStalls)
             {
+                // Left under water, the character would start every later trip from there, and the next run too.
+                if (!waterEscapeUsed && Svc.Condition[ConditionFlag.Diving])
+                {
+                    waterEscapeUsed = true;
+                    Warn($"Travel: stuck {stalls} times under water {DistanceTo(target):F0}m short of the spot in {zoneName}; teleporting out of the water");
+                    if (await TryTeleportShortcut(territoryId, target, $"{scope}-water", TeleportPurpose.Water))
+                    {
+                        stalls = 0;
+                        continue;
+                    }
+                }
+
                 Warn($"Travel: stuck {stalls} times {DistanceTo(target):F0}m short of the spot in {zoneName}; giving up");
                 return ZoneTravelResult.Failed;
             }
@@ -256,7 +280,12 @@ public abstract partial class AutoCommon
     {
         var ride = plan.Rides;
         var canRemount = mountingAllowed && !ride;
-        var label = ride ? $"Riding to the spot in {zoneName}" : $"Walking to the spot in {zoneName}";
+        var label = plan.Mode switch
+        {
+            LegMode.Dive => $"Swimming to the spot in {zoneName}",
+            LegMode.GroundMount or LegMode.Flight => $"Riding to the spot in {zoneName}",
+            _ => $"Walking to the spot in {zoneName}",
+        };
         var remount = false;
 
         bool StopCondition()
@@ -298,7 +327,7 @@ public abstract partial class AutoCommon
 
         Diag($"{scope}: going {plan.Mode}, {DistanceTo(target):F0}m to go");
         var startedAt = Environment.TickCount64;
-        var operation = new MoveOp(move => move.MoveInZone(plan.Target, MovementFor(plan.Mode, plan.ToleranceFor(arriveWithin)), StopCondition));
+        var operation = LegOperation(plan.Mode, plan.Target, plan.ToleranceFor(arriveWithin), StopCondition);
         var completed = await RunCancellable(operation, watchdogMs, scope, AbortIfStalled);
         if (remount)
         {
@@ -379,7 +408,7 @@ public abstract partial class AutoCommon
     // fires; a teleport is the one way back up. True once the character stands somewhere else.
     private async Task<bool> RecoverIfOffMesh(uint territoryId, Vector3 target, string scope)
     {
-        if (!StuckDetector.IsOffMesh())
+        if (!StuckDetector.IsOffMesh() || StandsAtTeleportLanding(scope))
         {
             return false;
         }
@@ -395,6 +424,40 @@ public abstract partial class AutoCommon
         return await TryTeleportShortcut(territoryId, target, $"{scope}-offmesh", TeleportPurpose.OffMesh);
     }
 
+    // The game sets a teleport down only on ground a character can stand on. The pathfinder can still read that ground
+    // as off the world: the floor under water (Tamamizu in The Ruby Sea) connects to none of its seed points, while the
+    // sea surface above is seeded floor. Near the landing, a teleport out would only land there again.
+    private async Task NoteTeleportLanding()
+    {
+        if (!await WaitForPlayerReady() || Svc.Objects.LocalPlayer is not { } player)
+        {
+            return;
+        }
+
+        teleportLanding = player.Position;
+        teleportLandingTerritoryId = Svc.ClientState.TerritoryType;
+        teleportLandingTrustLogged = false;
+    }
+
+    private bool StandsAtTeleportLanding(string scope)
+    {
+        if (teleportLanding is not { } landing
+            || teleportLandingTerritoryId != Svc.ClientState.TerritoryType
+            || Svc.Objects.LocalPlayer is not { } player
+            || Vector3.Distance(player.Position, landing) >= TeleportRecoveryMinHopMeters)
+        {
+            return false;
+        }
+
+        if (!teleportLandingTrustLogged)
+        {
+            teleportLandingTrustLogged = true;
+            Diag($"{scope}: no seeded floor within {StuckDetector.OffMeshProbeMeters:F0}m of {FormatPosition(player.Position)}, but the last teleport landed {Vector3.Distance(player.Position, landing):F0}m from here, so this is ground ({ConditionTag()})");
+        }
+
+        return true;
+    }
+
     private async Task<bool> TryTeleportShortcut(uint territoryId, Vector3 target, string label, TeleportPurpose purpose)
     {
         if (Svc.Condition[ConditionFlag.InCombat] || Svc.Objects.LocalPlayer is not { } player)
@@ -407,9 +470,10 @@ public abstract partial class AutoCommon
             return false;
         }
 
-        var fromHere = Vector3.Distance(player.Position, target);
-        var fromAetheryte = Vector3.Distance(aetheryte.Position, target);
-        var hop = Vector3.Distance(player.Position, aetheryte.Position);
+        // An aetheryte's height is unknown, so every distance here is measured over the ground.
+        var fromHere = GroundDistance.Between(player.Position, target);
+        var fromAetheryte = GroundDistance.Between(aetheryte.Position, target);
+        var hop = GroundDistance.Between(player.Position, aetheryte.Position);
         var worthIt = purpose switch
         {
             TeleportPurpose.Shortcut => fromHere - fromAetheryte >= TeleportShortcutMinSavingMeters,
@@ -426,6 +490,7 @@ public abstract partial class AutoCommon
         {
             TeleportPurpose.Shortcut => $"{label}: {aetheryte.Name} is {fromAetheryte:F0}m from the spot against {fromHere:F0}m from here; teleporting",
             TeleportPurpose.Recovery => $"{label}: teleporting to {aetheryte.Name} to get unstuck, {fromAetheryte:F0}m from the spot",
+            TeleportPurpose.Water => $"{label}: teleporting to {aetheryte.Name} to get out of the water, {fromAetheryte:F0}m from the spot",
             _ => $"{label}: teleporting to {aetheryte.Name} to get back onto the world, {fromAetheryte:F0}m from the spot",
         });
         return await TeleportToAetheryte(territoryId, aetheryte, label);
@@ -453,12 +518,14 @@ public abstract partial class AutoCommon
             }
 
             var aetheryte = aetherytes.Span[index];
-            if (!ZoneAetherytes.IsAttuned(aetheryte.Id) || Vector3.Distance(here, aetheryte.Position) < TeleportRecoveryMinHopMeters)
+            if (!ZoneAetherytes.IsAttuned(aetheryte.Id) || GroundDistance.Between(here, aetheryte.Position) < TeleportRecoveryMinHopMeters)
             {
                 continue;
             }
 
-            if (navmesh.NearestStandablePoint(aetheryte.Position, AetheryteFloorHalfExtentMeters, AetheryteFloorHalfExtentMeters) is not { } floor)
+            // Its height is unknown, so the floor it stands on is looked for from above, the seeded one first.
+            if ((navmesh.HighestFloor(aetheryte.Position, allowUnlandable: false, AetheryteFloorHalfExtentMeters)
+                    ?? navmesh.HighestFloor(aetheryte.Position, allowUnlandable: true, AetheryteFloorHalfExtentMeters)) is not { } floor)
             {
                 continue;
             }
@@ -515,6 +582,7 @@ public abstract partial class AutoCommon
         }
 
         await WaitForNavmeshReady(TravelNavmeshWaitMs, TravelNavmeshPollFrames);
+        await NoteTeleportLanding();
         return true;
     }
 
@@ -557,7 +625,13 @@ public abstract partial class AutoCommon
             return;
         }
 
-        if (Svc.Condition[ConditionFlag.Swimming] || Svc.Condition[ConditionFlag.Diving])
+        if (Svc.Condition[ConditionFlag.Diving])
+        {
+            await RiseToSurface(scope);
+            return;
+        }
+
+        if (Svc.Condition[ConditionFlag.Swimming])
         {
             Diag($"{scope}: stuck in the water ({ConditionTag()}); re-pathing");
             return;
@@ -589,6 +663,32 @@ public abstract partial class AutoCommon
         Diag($"{stepScope}: stepping {Vector3.Distance(position, destination):F1}m to {FormatPosition(destination)}");
         var operation = new MoveOp(move => move.MoveInZone(destination, walkMovement.WithTolerance(UnstickStepToleranceMeters), null));
         await RunCancellable(operation, UnstickStepWatchdogMs, stepScope, StuckDetector.MoveStallAbort(stepScope));
+    }
+
+    // The seeded floor overhead is the water's surface or the land above it, and from there the floor routes work again.
+    private async Task RiseToSurface(string scope)
+    {
+        if (Svc.Objects.LocalPlayer is not { } player)
+        {
+            return;
+        }
+
+        var position = player.Position;
+        if (NavmeshIPC.Instance.HighestFloor(position, allowUnlandable: false, SurfaceSearchHalfExtentMeters) is not { } surface || surface.Y <= position.Y)
+        {
+            Diag($"{scope}: stuck under water ({ConditionTag()}) with no seeded floor above {FormatPosition(position)}; re-pathing");
+            return;
+        }
+
+        Status = "Swimming up to the surface";
+        var riseScope = $"{scope}-surface";
+        Diag($"{riseScope}: stuck under water ({ConditionTag()}); rising {surface.Y - position.Y:F0}m to {FormatPosition(surface)}");
+        var operation = new MoveOp(move => move.DiveInZone(surface, SurfaceArriveMeters, static () => !Svc.Condition[ConditionFlag.Diving]));
+        await RunCancellable(operation, SurfaceWatchdogMs, riseScope, StuckDetector.MoveStallAbort(riseScope));
+        if (operation.Fault is { } fault)
+        {
+            Diag($"{riseScope}: faulted: {fault.Message}");
+        }
     }
 
     private static Vector3? SideStep(NavmeshIPC navmesh, Vector3 position, Vector3 target, int stalls)

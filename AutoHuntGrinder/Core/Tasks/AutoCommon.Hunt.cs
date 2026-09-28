@@ -470,10 +470,9 @@ public abstract partial class AutoCommon
             }
 
             var legGoal = goal;
-            var legMovement = MovementFor(plan.Mode, goalTolerance);
             Diag($"{scope}: going {plan.Mode} {DistanceTo(legGoal):F0}m to {FormatPosition(legGoal)}");
             var startedAt = Environment.TickCount64;
-            var operation = new MoveOp(move => move.MoveInZone(legGoal, legMovement, StopCondition));
+            var operation = LegOperation(plan.Mode, legGoal, goalTolerance, StopCondition);
             var completed = await RunCancellable(operation, TravelBudgetMs(legGoal), scope, StuckDetector.MoveStallAbort(scope));
             if (sighted)
             {
@@ -521,7 +520,7 @@ public abstract partial class AutoCommon
         if (Svc.ClientState.TerritoryType != hunt.TerritoryId)
         {
             MarkPhase = HuntPhase.Travelling;
-            var entry = hunt.SpawnPoints.Length > 0 ? EstimateMarkHeight(hunt.TerritoryId, hunt.SpawnPoints[0]) : Vector3.Zero;
+            var entry = hunt.SpawnPoints.Length > 0 ? LandingHint(hunt.SpawnPoints[0]) : Vector3.Zero;
             Diag($"Hunt: teleporting to {hunt.ZoneName} ({hunt.TerritoryId}) for {hunt.Name}");
             var reached = false;
             await RunWithStatusPinned(
@@ -536,6 +535,8 @@ public abstract partial class AutoCommon
 
                 return false;
             }
+
+            await NoteTeleportLanding();
         }
 
         await WaitForNavmeshReady(TravelNavmeshWaitMs, TravelNavmeshPollFrames);
@@ -577,17 +578,9 @@ public abstract partial class AutoCommon
         return hunt.ResolvedPoints;
     }
 
-    // Only picks the aetheryte to land at; the real height is snapped once the zone's mesh is loaded.
-    private static Vector3 EstimateMarkHeight(uint territoryId, Vector3 point)
-    {
-        if (!float.IsNaN(point.Y))
-        {
-            return point;
-        }
-
-        var flat = point with { Y = 0f };
-        return ZoneAetherytes.TryFindNearest(territoryId, flat, out var aetheryte) ? point with { Y = aetheryte.Position.Y } : flat;
-    }
+    // Only picks the aetheryte to land at, which is chosen over the ground; the real height is snapped once the zone's
+    // mesh is loaded.
+    private static Vector3 LandingHint(Vector3 point) => float.IsNaN(point.Y) ? point with { Y = 0f } : point;
 
     // A height hint picks the floor nearest it, so a spawn under a bridge or below a ledge is not lifted to the top layer.
     private static Vector3? SnapMarkHeight(Vector3 point)

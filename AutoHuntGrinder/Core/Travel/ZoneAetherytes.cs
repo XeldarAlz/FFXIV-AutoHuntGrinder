@@ -6,6 +6,8 @@ using UIState = FFXIVClientStructs.FFXIV.Client.Game.UI.UIState;
 
 namespace AutoHuntGrinder.Core.Travel;
 
+// No teleport aetheryte has a Level row, so its position comes from its map marker and its height always reads 0:
+// only X and Z say where it is.
 internal readonly record struct ZoneAetheryte(uint Id, string Name, Vector3 Position);
 
 internal readonly record struct ZoneGateway(uint AetheryteId, uint TerritoryId, string Name, Vector3 Position);
@@ -42,7 +44,7 @@ internal static class ZoneAetherytes
                 continue;
             }
 
-            var distance = Vector3.DistanceSquared(candidate.Position, target);
+            var distance = GroundDistance.SquaredBetween(candidate.Position, target);
             if (distance >= bestDistance)
             {
                 continue;

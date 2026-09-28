@@ -25,14 +25,14 @@ public abstract partial class AutoCommon
 
     private enum GroundRouteKind : byte { Unknown, Complete, Partial }
 
-    private enum LegMode : byte { OnFoot, GroundMount, Flight }
+    private enum LegMode : byte { OnFoot, GroundMount, Flight, Dive }
 
     // End is the last point the route reaches on the floor, and ShortfallMeters how far that is from the target.
     private readonly record struct GroundRoute(GroundRouteKind Kind, Vector3 End, float LengthMeters, float ShortfallMeters);
 
     private readonly record struct LegPlan(LegMode Mode, Vector3 Target, float ShortfallMeters, bool Reachable)
     {
-        public bool Rides => Mode != LegMode.OnFoot;
+        public bool Rides => Mode is LegMode.GroundMount or LegMode.Flight;
 
         // A leg aimed at the end of a partial route has to get closer to it than the caller asked, so that stopping
         // there still counts as being within reach of the real target.
@@ -40,7 +40,8 @@ public abstract partial class AutoCommon
             => ShortfallMeters <= 0f ? wantedMeters : MathF.Max(MinLegToleranceMeters, wantedMeters - ShortfallMeters);
     }
 
-    // From the air there is no floor under the character to plan a ground route from, so a flight carries on as one.
+    // From the air there is no floor under the character to plan a ground route from, so a flight carries on as one, and
+    // under water likewise only the pathfinder's flight volume has a way through.
     // The mesh can call a route whole that the game blocks with a wall it has no collision for, so a caller whose
     // ground leg already stalled asks for the air.
     private async Task<LegPlan> PlanLeg(uint territoryId, Vector3 destination, float reachMeters, float mountMinMeters, bool mountingAllowed, bool groundStalled, string scope)
@@ -55,8 +56,14 @@ public abstract partial class AutoCommon
             return new LegPlan(LegMode.Flight, destination, 0f, true);
         }
 
-        var mountable = mountingAllowed && FreeToMount();
+        if (Svc.Condition[ConditionFlag.Diving])
+        {
+            return new LegPlan(LegMode.Dive, destination, 0f, true);
+        }
+
+        // A mount already summoned stays usable in the water, and whether it may take off there the game answers itself.
         var mounted = Svc.Condition[ConditionFlag.Mounted];
+        var mountable = mountingAllowed && (mounted ? !Svc.Condition[ConditionFlag.InCombat] : FreeToMount());
         var flightAvailable = mountable && FlightAccess.IsAvailableIn(territoryId);
         var straight = Vector3.Distance(player.Position, destination);
         if (flightAvailable && (groundStalled || straight > FlightMinMeters))
@@ -170,6 +177,14 @@ public abstract partial class AutoCommon
             ? new GroundRoute(GroundRouteKind.Partial, end, length, shortfall)
             : new GroundRoute(GroundRouteKind.Complete, goal, length, 0f);
     }
+
+    private static MoveOp LegOperation(LegMode mode, Vector3 target, float tolerance, Func<bool>? stopCondition)
+        => mode == LegMode.Dive
+            ? new MoveOp(move => move.DiveInZone(target, tolerance, stopCondition))
+            : new MoveOp(move => move.MoveInZone(target, MovementFor(mode, tolerance), stopCondition));
+
+    // A character swimming under water has no floor to walk on, so a short step there is a dive as well.
+    private static LegMode StepMode() => Svc.Condition[ConditionFlag.Diving] ? LegMode.Dive : LegMode.OnFoot;
 
     private static MovementConfig MovementFor(LegMode mode, float tolerance)
     {
