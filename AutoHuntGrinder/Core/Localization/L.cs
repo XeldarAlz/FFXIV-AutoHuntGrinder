@@ -369,6 +369,16 @@ internal static partial class L
         public static readonly LocString GeneralBehavior = new("settings.general.behavior", "Behavior");
         public static readonly LocString AutoPause = new("settings.general.autoPause", "Auto-pause in content");
         public static readonly LocString AutoPauseHelp = new("settings.general.autoPauseHelp", "Pause the run while you are inside a duty, trial, raid, or any other instanced content, then resume it once you are back outside. Your bills and session stats are kept.");
+
+        public static readonly LocString FateGroup = new("settings.fate.group", "FATE marks");
+        public static readonly LocString FateHuntOthers = new("settings.fate.huntOthers", "Hunt other marks while a FATE is down");
+        public static readonly LocString FateHuntOthersHelp = new("settings.fate.huntOthersHelp", "Some A Realm Reborn daily marks only appear as the boss of a FATE. Instead of waiting in that zone, the run hunts the rest of the route and looks back in on the FATE's zone every so often, fighting it as soon as it is up. Off, the run waits in the zone until the FATE starts or the longest wait runs out.");
+        public static readonly LocString FateBudget = new("settings.fate.budget", "Longest wait per FATE");
+        public static readonly LocString FateBudgetHelp = new("settings.fate.budgetHelp", "How long the run waits on one FATE in a pass before moving on; the next pass tries again. Only time spent waiting in its zone counts, not the hunts in between or the fight itself.");
+        public static readonly LocString FateRecheck = new("settings.fate.recheck", "Look in again every");
+        public static readonly LocString FateRecheckHelp = new("settings.fate.recheckHelp", "While other marks are left, how long after a look-in the run checks the FATE's zone again. Each look-in costs a teleport. Keep it shorter than a FATE lasts, so one that starts while you are away is still up when you come back.");
+        public static readonly LocString FateVisit = new("settings.fate.visit", "Wait per visit");
+        public static readonly LocString FateVisitHelp = new("settings.fate.visitHelp", "Once only FATE marks are left, how long the run waits in each FATE's zone before moving to the next. With one FATE left it keeps waiting there.");
     }
 
     internal static class Plugin

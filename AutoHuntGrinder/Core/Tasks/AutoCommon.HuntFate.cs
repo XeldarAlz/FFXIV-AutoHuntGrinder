@@ -10,36 +10,27 @@ namespace AutoHuntGrinder.Core.Tasks;
 
 public abstract partial class AutoCommon
 {
-    // FATEs come back on their own timers, and a boss FATE can take a long while to come around again.
-    private const int MarkFateWaitBudgetMs = 1_200_000;
     private const int MarkFatePollMs = 1_000;
+    // A FATE about to start is worth staying for past the end of a visit.
+    private const int MarkFatePreparingGraceMs = 60_000;
     private const int MarkFateSyncRetryMs = 5_000;
     private const float MarkFateMinArriveMeters = 5f;
     private const float MarkFateMaxArriveMeters = 20f;
     // Halfway into the ring keeps the character inside the FATE while its mobs load in.
     private const float MarkFateInnerRingShare = 0.5f;
 
-    private readonly record struct MarkFateState(FateState State, Vector3 Location, float Radius, byte Progress);
+    private readonly record struct MarkFateState(FateState State, Vector3 Location, float Radius, byte Progress, int StartTimeEpoch, short Duration);
 
-    private async Task<MarkOutcome> HuntFateMark(MarkHuntContext hunt)
+    private async Task<MarkOutcome> HuntFateMark(MarkHuntContext hunt, MarkFateWait wait)
     {
         if (!await EnterMarkTerritory(hunt))
         {
             return CancelToken.IsCancellationRequested ? MarkOutcome.Cancelled : MarkOutcome.Unreachable;
         }
 
-        hunt.StartClock(MarkFateWaitBudgetMs, MarkOutcome.FateMissed);
-        var points = hunt.SpawnPoints.Length > 0 ? ResolveMarkPoints(hunt) : [];
-        if (points.Length > 0 && !IsMarkFateRunning(hunt.FateId) && !WithinReach(points[0], MarkSweepArriveMeters))
-        {
-            MarkPhase = HuntPhase.Travelling;
-            Diag($"Fate: moving to where {hunt.Fate.Name} starts to wait for it");
-            await TravelTo(hunt.TerritoryId, points[0], MarkSweepArriveMeters);
-        }
-
         while (true)
         {
-            if (await WaitForMarkFate(hunt) is { } stop)
+            if (await WaitForMarkFate(hunt, wait) is { } stop)
             {
                 return stop;
             }
@@ -49,14 +40,40 @@ public abstract partial class AutoCommon
                 return outcome;
             }
 
+            if (wait.Rotates)
+            {
+                Diag($"Fate: {hunt.Fate.Name} ended before {hunt.Name} counted; looking in again later");
+                return wait.Spent ? MarkOutcome.FateMissed : MarkOutcome.FateNotUp;
+            }
+
             Diag($"Fate: {hunt.Fate.Name} ended before {hunt.Name} counted; waiting for it to come back");
+            wait.PlanWaitOut();
         }
     }
 
-    private async Task<MarkOutcome?> WaitForMarkFate(MarkHuntContext hunt)
+    // The visit's clock ends it FateNotUp while budget is left for another visit, and FateMissed once none is.
+    private async Task<MarkOutcome?> WaitForMarkFate(MarkHuntContext hunt, MarkFateWait wait)
     {
-        var label = $"Waiting for {hunt.Fate.Name} to start";
+        var visitMs = Math.Min(wait.VisitMs, wait.RemainingMs);
+        hunt.StartClock(visitMs, visitMs >= wait.RemainingMs ? MarkOutcome.FateMissed : MarkOutcome.FateNotUp);
+        var startedAt = Environment.TickCount64;
+        try
+        {
+            return await WatchMarkFate(hunt, wait.Dwells, visitMs);
+        }
+        finally
+        {
+            wait.Spend(Environment.TickCount64 - startedAt);
+        }
+    }
+
+    // The FATE list covers the whole zone, so a look-in reads it where the character lands; only a dwell walks to where
+    // the FATE starts. Once the FATE runs the clock stops, because the FATE's own end bounds the fight.
+    private async Task<MarkOutcome?> WatchMarkFate(MarkHuntContext hunt, bool dwells, int visitMs)
+    {
+        var label = dwells ? $"Waiting for {hunt.Fate.Name} to start" : $"Looking in on {hunt.Fate.Name}";
         var announced = false;
+        var atStart = !dwells;
         while (true)
         {
             if (CheckMarkState(hunt) is { } stop)
@@ -67,14 +84,28 @@ public abstract partial class AutoCommon
             var known = TryReadMarkFate(hunt.FateId, out var fate);
             if (known && fate.State == FateState.Running)
             {
-                Diag($"Fate: {hunt.Fate.Name} ({hunt.FateId}) is running at {FormatPosition(fate.Location)}, radius {fate.Radius:F0}m, {fate.Progress}%");
+                var secondsLeft = fate.StartTimeEpoch + fate.Duration - DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                Diag($"Fate: {hunt.Fate.Name} ({hunt.FateId}) is running at {FormatPosition(fate.Location)}, radius {fate.Radius:F0}m, {fate.Progress}%, {secondsLeft}s left of {fate.Duration}s");
+                hunt.StopClock();
                 return null;
+            }
+
+            if (known && fate.State == FateState.Preparing)
+            {
+                hunt.ExtendClock(MarkFatePreparingGraceMs);
             }
 
             if (!announced)
             {
                 announced = true;
-                Diag($"Fate: waiting up to {MarkFateWaitBudgetMs / TimeUnits.MillisecondsPerMinute} minutes for {hunt.Fate.Name} ({hunt.FateId}), {(known ? $"now {fate.State}" : "not up")}");
+                Diag($"Fate: {(dwells ? "waiting" : "looking in")} up to {visitMs / TimeUnits.MillisecondsPerSecond}s for {hunt.Fate.Name} ({hunt.FateId}), {(known ? $"now {fate.State}" : "not up")}");
+            }
+
+            if (!atStart)
+            {
+                atStart = true;
+                await MoveToMarkFateStart(hunt);
+                continue;
             }
 
             MarkPhase = HuntPhase.Searching;
@@ -86,6 +117,19 @@ public abstract partial class AutoCommon
 
             await DelayMs(MarkFatePollMs);
         }
+    }
+
+    private async Task MoveToMarkFateStart(MarkHuntContext hunt)
+    {
+        var points = hunt.SpawnPoints.Length > 0 ? ResolveMarkPoints(hunt) : [];
+        if (points.Length == 0 || WithinReach(points[0], MarkSweepArriveMeters))
+        {
+            return;
+        }
+
+        MarkPhase = HuntPhase.Travelling;
+        Diag($"Fate: moving to where {hunt.Fate.Name} starts to wait for it");
+        await TravelTo(hunt.TerritoryId, points[0], MarkSweepArriveMeters);
     }
 
     private async Task<MarkOutcome?> FightMarkFate(MarkHuntContext hunt)
@@ -163,6 +207,9 @@ public abstract partial class AutoCommon
         manager->LevelSync();
     }
 
+    private protected static bool IsMarkFateUp(uint fateId)
+        => TryReadMarkFate(fateId, out var fate) && fate.State is FateState.Running or FateState.Preparing;
+
     private static unsafe bool TryReadMarkFate(uint fateId, out MarkFateState state)
     {
         state = default;
@@ -178,7 +225,7 @@ public abstract partial class AutoCommon
             return false;
         }
 
-        state = new MarkFateState(fate->State, fate->Location, fate->Radius, fate->Progress);
+        state = new MarkFateState(fate->State, fate->Location, fate->Radius, fate->Progress, fate->StartTimeEpoch, fate->Duration);
         return true;
     }
 
@@ -187,6 +234,4 @@ public abstract partial class AutoCommon
         var manager = CSFateManager.Instance();
         return manager != null && manager->CurrentFate != null && manager->CurrentFate->FateId == fateId;
     }
-
-    private static bool IsMarkFateRunning(uint fateId) => TryReadMarkFate(fateId, out var fate) && fate.State == FateState.Running;
 }

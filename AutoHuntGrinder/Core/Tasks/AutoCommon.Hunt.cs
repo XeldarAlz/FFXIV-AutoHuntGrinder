@@ -74,7 +74,8 @@ public abstract partial class AutoCommon
     {
     }
 
-    protected async Task<MarkOutcome> HuntMark(HuntBill bill, HuntTarget target)
+    // A FATE mark waits under fateWait, which carries its budget across visits; without one it waits the budget out.
+    private protected async Task<MarkOutcome> HuntMark(HuntBill bill, HuntTarget target, MarkFateWait? fateWait)
     {
         Diag($"Hunt: {target.Name} for {bill.Name} at {target.Killed}/{target.Needed} (target row {target.TargetRowId}, name {target.NameId}, territory {target.TerritoryId}, {ConditionTag()})");
         var progress = ReadBillProgress(bill, target, force: true, out var status);
@@ -95,7 +96,7 @@ public abstract partial class AutoCommon
             return MarkOutcome.CombatUnavailable;
         }
 
-        var hunt = CreateMarkHunt(bill, target, status);
+        var hunt = CreateMarkHunt(bill, target, status, fateWait);
         if (hunt is null)
         {
             Warn($"Hunt: no spawn points and no FATE are known for {target.Name} in {target.ZoneName}; skipping it");
@@ -190,7 +191,7 @@ public abstract partial class AutoCommon
 
             var outcome = IsMarkKnockedOut()
                 ? MarkOutcome.Died
-                : hunt.FateId != 0 ? await HuntFateMark(hunt) : await SearchForMark(hunt);
+                : hunt.FateWait is { } fateWait ? await HuntFateMark(hunt, fateWait) : await SearchForMark(hunt);
             if (outcome != MarkOutcome.Died)
             {
                 return outcome;
@@ -212,7 +213,7 @@ public abstract partial class AutoCommon
     }
 
     // A hunt mark's few reported positions are widened with every spawn point of its rank in its zone.
-    private static MarkHuntContext? CreateMarkHunt(HuntBill bill, HuntTarget target, BillStatus startStatus)
+    private static MarkHuntContext? CreateMarkHunt(HuntBill bill, HuntTarget target, BillStatus startStatus, MarkFateWait? fateWait)
     {
         var hasFate = MarkFates.TryGet(target.TargetRowId, out var fate);
         var territoryId = RoutePlanner.SearchTerritoryOf(target, out var points);
@@ -222,7 +223,8 @@ public abstract partial class AutoCommon
             return null;
         }
 
-        return MarkHuntContext.ForBill(bill, target, startStatus, territoryId, fate, searchPoints);
+        var wait = hasFate ? fateWait ?? new MarkFateWait(FateWaitSettings.Read().BudgetMs, rotates: false) : null;
+        return MarkHuntContext.ForBill(bill, target, startStatus, territoryId, fate, wait, searchPoints);
     }
 
     // A hunt mark stands at one of its zone's spawn points, so those widen its reported positions and replace a sub-area
@@ -775,12 +777,13 @@ public abstract partial class AutoCommon
             FightLabel = $"Fighting {name}";
         }
 
-        public static MarkHuntContext ForBill(HuntBill bill, HuntTarget target, BillStatus startStatus, uint territoryId, MarkFate fate, Vector3[] spawnPoints)
+        public static MarkHuntContext ForBill(HuntBill bill, HuntTarget target, BillStatus startStatus, uint territoryId, MarkFate fate, MarkFateWait? fateWait, Vector3[] spawnPoints)
             => new(target.Name, target.NameId, bill.Name, target.Needed, territoryId, fate, spawnPoints, bill.Cadence == BillCadence.Weekly, areaPoints: false)
             {
                 Bill = bill,
                 Target = target,
                 StartStatus = startStatus,
+                FateWait = fateWait,
             };
 
         public static MarkHuntContext ForQuarry(in HuntObjective objective, string name, string sourceName, uint territoryId, Vector3[] spawnPoints, bool areaPoints)
@@ -828,6 +831,9 @@ public abstract partial class AutoCommon
         public MarkFate Fate { get; }
 
         public uint FateId => Fate.FateId;
+
+        // Set exactly when the mark is FATE-bound.
+        public MarkFateWait? FateWait { get; private init; }
 
         public Vector3[] SpawnPoints { get; }
 
@@ -894,6 +900,10 @@ public abstract partial class AutoCommon
             SearchDeadline = Environment.TickCount64 + budgetMs;
             ExpiredOutcome = expiredOutcome;
         }
+
+        public void StopClock() => SearchDeadline = long.MaxValue;
+
+        public void ExtendClock(int graceMs) => SearchDeadline = Math.Max(SearchDeadline, Environment.TickCount64 + graceMs);
 
         public void Ignore(ulong gameObjectId)
         {

@@ -7,7 +7,6 @@ namespace AutoHuntGrinder.Core.Tasks;
 internal sealed class HuntProgress
 {
     private HuntStop[] route = [];
-    private int routeNext;
     private HuntObjective[] objectives = [];
     private int objectiveNext;
 
@@ -19,7 +18,7 @@ internal sealed class HuntProgress
 
     public HuntTarget Target { get; private set; }
 
-    public ReadOnlySpan<HuntStop> RouteAhead => route.AsSpan(Math.Min(routeNext, route.Length));
+    public ReadOnlySpan<HuntStop> RouteAhead => route;
 
     public bool HasObjective { get; private set; }
 
@@ -48,15 +47,11 @@ internal sealed class HuntProgress
     public void SetRoute(List<HuntStop> planned)
     {
         route = [.. planned];
-        routeNext = 0;
     }
-
-    public void SetRouteStop(int stopIndex) => routeNext = stopIndex;
 
     public void ClearRoute()
     {
         route = [];
-        routeNext = 0;
     }
 
     public void SetObjective(in HuntObjective objective)

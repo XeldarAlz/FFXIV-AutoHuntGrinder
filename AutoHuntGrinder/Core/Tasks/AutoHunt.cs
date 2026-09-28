@@ -7,7 +7,8 @@ namespace AutoHuntGrinder.Core.Tasks;
 
 // Each pass takes the posted bills and hunts the planned route, and the next pass plans again: a finished old bill frees
 // the fresh one on the board, and a mark that stayed hidden gets another look. A pass that picks up nothing and credits no
-// kill ends the run, so a mark that cannot be found does not keep it going.
+// kill ends the run, so a mark that cannot be found does not keep it going. A FATE mark whose FATE is not up does not hold
+// up the route: the run looks in on its zone between other marks and waits there only once nothing else is left.
 internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession session, HuntProgress progress) : AutoCommon
 {
     private const int MaxHuntPasses = 5;
@@ -20,6 +21,10 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
     private readonly HashSet<byte> billsLeftOnBoard = [];
     // A twin stop shares the mark's spawn points or FATE, so a miss on one bill is a miss on the other until the next pass.
     private readonly HashSet<(uint NameId, uint TerritoryId)> missedThisPass = [];
+    // Keyed by FATE, so a mark listed on two bills shares one wait.
+    private readonly Dictionary<uint, MarkFateWait> fateWaits = [];
+    private readonly List<HuntStop> deferredFates = [];
+    private readonly List<HuntStop> upcoming = [];
 
     private readonly record struct Leftovers(int Marks, int Kills, int PickUps, int NoBoard, int Unhuntable, int Unreadable)
     {
@@ -190,10 +195,14 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
     private async Task<bool> HuntRoute(List<HuntStop> route, int pass)
     {
         missedThisPass.Clear();
-        for (var stopIndex = 0; stopIndex < route.Count; stopIndex++)
+        fateWaits.Clear();
+        deferredFates.Clear();
+        var settings = FateWaitSettings.Read();
+        var visit = 0;
+        while (TakeNextStop(route, out var stop))
         {
-            var stop = route[stopIndex];
-            ReportRouteStop(stopIndex);
+            visit++;
+            ReportUpcoming(stop, route);
             if (SkipStop(stop))
             {
                 continue;
@@ -210,11 +219,12 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
                 return false;
             }
 
-            Diag($"Run: pass {pass}, mark {stopIndex + 1}/{route.Count}: {stop.Target.Name} for {stop.Bill.Name}");
+            var fateWait = PlanFateVisit(stop, route, settings);
+            Diag($"Run: pass {pass}, stop {visit}: {stop.Target.Name} for {stop.Bill.Name}{DescribeVisit(fateWait)}; {route.Count} mark(s) ahead, {deferredFates.Count} FATE mark(s) to look in on");
             ReportMark(stop);
             ReportPhase(HuntPhase.Travelling);
             var killsBefore = session.MarksKilled;
-            var outcome = await HuntMark(stop.Bill, stop.Target);
+            var outcome = await HuntMark(stop.Bill, stop.Target, fateWait);
             if (CancelToken.IsCancellationRequested)
             {
                 return false;
@@ -228,14 +238,180 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
                 return false;
             }
 
+            if (outcome == MarkOutcome.FateNotUp && fateWait is not null)
+            {
+                DeferFate(stop, fateWait, settings);
+                continue;
+            }
+
             if (!Settle(stop, outcome))
             {
                 return false;
             }
         }
 
-        ReportRouteStop(route.Count);
+        ReportRouteDone();
         return true;
+    }
+
+    // A FATE that is up where the character stands comes first, since it may be gone by the time the route comes back.
+    // While other marks are left, a FATE mark waiting on its FATE is looked in on once it is due, when the route leaves
+    // the zone anyway or the FATE is in this zone. Once only FATE marks are left, the run waits in each zone in turn,
+    // the one looked at longest ago first.
+    private bool TakeNextStop(List<HuntStop> ahead, out HuntStop stop)
+    {
+        var territoryId = Svc.ClientState.TerritoryType;
+        if (TakeFateUpHere(deferredFates, territoryId, out stop) || TakeFateUpHere(ahead, territoryId, out stop))
+        {
+            return true;
+        }
+
+        if (HasSearchStop(ahead))
+        {
+            var leavingZone = ahead[0].TerritoryId != territoryId;
+            return TakeDueFate(territoryId, leavingZone, out stop) || TakeAt(ahead, 0, out stop);
+        }
+
+        return ahead.Count > 0 ? TakeAt(ahead, 0, out stop) : TakeLongestUnseenFate(out stop);
+    }
+
+    private static bool TakeFateUpHere(List<HuntStop> stops, uint territoryId, out HuntStop stop)
+    {
+        for (var stopIndex = 0; stopIndex < stops.Count; stopIndex++)
+        {
+            var candidate = stops[stopIndex];
+            if (candidate.IsFateBound && candidate.TerritoryId == territoryId && IsMarkFateUp(candidate.FateId))
+            {
+                return TakeAt(stops, stopIndex, out stop);
+            }
+        }
+
+        stop = default;
+        return false;
+    }
+
+    private bool TakeDueFate(uint territoryId, bool leavingZone, out HuntStop stop)
+    {
+        var now = Environment.TickCount64;
+        var pick = -1;
+        var earliest = long.MaxValue;
+        for (var stopIndex = 0; stopIndex < deferredFates.Count; stopIndex++)
+        {
+            var candidate = deferredFates[stopIndex];
+            if (!leavingZone && candidate.TerritoryId != territoryId)
+            {
+                continue;
+            }
+
+            var lookAt = fateWaits[candidate.FateId].NextLookAt;
+            if (lookAt > now || lookAt >= earliest)
+            {
+                continue;
+            }
+
+            earliest = lookAt;
+            pick = stopIndex;
+        }
+
+        return TakePicked(pick, out stop);
+    }
+
+    private bool TakeLongestUnseenFate(out HuntStop stop)
+    {
+        var pick = -1;
+        var earliest = long.MaxValue;
+        for (var stopIndex = 0; stopIndex < deferredFates.Count; stopIndex++)
+        {
+            var lookAt = fateWaits[deferredFates[stopIndex].FateId].NextLookAt;
+            if (lookAt >= earliest)
+            {
+                continue;
+            }
+
+            earliest = lookAt;
+            pick = stopIndex;
+        }
+
+        return TakePicked(pick, out stop);
+    }
+
+    private bool TakePicked(int pick, out HuntStop stop)
+    {
+        if (pick < 0)
+        {
+            stop = default;
+            return false;
+        }
+
+        return TakeAt(deferredFates, pick, out stop);
+    }
+
+    private static bool TakeAt(List<HuntStop> stops, int stopIndex, out HuntStop stop)
+    {
+        stop = stops[stopIndex];
+        stops.RemoveAt(stopIndex);
+        return true;
+    }
+
+    private static bool HasSearchStop(List<HuntStop> stops)
+    {
+        for (var stopIndex = 0; stopIndex < stops.Count; stopIndex++)
+        {
+            if (!stops[stopIndex].IsFateBound)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // With other marks still ahead a visit only looks in; with none left it waits a while before moving to the next FATE.
+    private MarkFateWait? PlanFateVisit(in HuntStop stop, List<HuntStop> ahead, in FateWaitSettings settings)
+    {
+        if (!stop.IsFateBound)
+        {
+            return null;
+        }
+
+        if (!fateWaits.TryGetValue(stop.FateId, out var wait))
+        {
+            wait = new MarkFateWait(settings.BudgetMs, settings.HuntsOthers);
+            fateWaits.Add(stop.FateId, wait);
+        }
+
+        if (!wait.Rotates)
+        {
+            wait.PlanWaitOut();
+        }
+        else if (HasSearchStop(ahead))
+        {
+            wait.PlanLookIn();
+        }
+        else
+        {
+            wait.PlanDwell(settings.VisitMs);
+        }
+
+        return wait;
+    }
+
+    private void DeferFate(in HuntStop stop, MarkFateWait wait, in FateWaitSettings settings)
+    {
+        wait.NextLookAt = Environment.TickCount64 + settings.RecheckMs;
+        deferredFates.Add(stop);
+        Diag($"Run: the FATE for {stop.Target.Name} is not up; {wait.RemainingMs / TimeUnits.MillisecondsPerSecond}s of its wait left, looking in again in {settings.RecheckMs / TimeUnits.MillisecondsPerMinute} min at the earliest");
+    }
+
+    private static string DescribeVisit(MarkFateWait? wait)
+    {
+        if (wait is null)
+        {
+            return string.Empty;
+        }
+
+        var kind = wait.Dwells ? "waiting" : "looking in";
+        return $", {kind} up to {Math.Min(wait.VisitMs, wait.RemainingMs) / TimeUnits.MillisecondsPerSecond}s of {wait.RemainingMs / TimeUnits.MillisecondsPerSecond}s left for its FATE";
     }
 
     private bool SkipStop(in HuntStop stop)
@@ -435,11 +611,21 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
         }
     }
 
-    private void ReportRouteStop(int stopIndex)
+    // The window lists the mark being hunted, the route ahead, then the FATE marks waiting on their FATEs.
+    private void ReportUpcoming(in HuntStop current, List<HuntStop> ahead)
+    {
+        upcoming.Clear();
+        upcoming.Add(current);
+        upcoming.AddRange(ahead);
+        upcoming.AddRange(deferredFates);
+        ReportRoute(upcoming);
+    }
+
+    private void ReportRouteDone()
     {
         if (!CancelToken.IsCancellationRequested)
         {
-            progress.SetRouteStop(stopIndex);
+            progress.ClearRoute();
         }
     }
 
