@@ -237,6 +237,7 @@
   "changelog.new": "Nuevo",
   "changelog.changes.one": "{0} cambio",
   "changelog.changes.other": "{0} cambios",
+  "changelog.r1810.1": "Añadido un botón de Buy Me a Coffee debajo de Patreon en la página Acerca de",
   "changelog.r1800.1": "Se cazan otros objetivos mientras no está activo el FATE de un objetivo de FATE, con nuevos ajustes en Ajustes > General",
   "changelog.r1800.2": "Las zonas de FATE se revisan desde el inicio de cada pasada, así que más espera se dedica a cazar otros objetivos",
   "changelog.r1800.3": "Corregido el abandono de un FATE que empezaba tarde en mitad del combate",

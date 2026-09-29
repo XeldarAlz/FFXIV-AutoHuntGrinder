@@ -237,6 +237,7 @@
   "changelog.new": "Yeni",
   "changelog.changes.one": "{0} değişiklik",
   "changelog.changes.other": "{0} değişiklik",
+  "changelog.r1810.1": "Hakkında sayfasında Patreon'un altına Buy Me a Coffee düğmesi eklendi",
   "changelog.r1800.1": "Bir FATE hedefinin FATE'i yokken diğer hedefler avlanır; yeni FATE ayarları Ayarlar > Genel altında",
   "changelog.r1800.2": "FATE bölgeleri artık her turun başından itibaren kontrol ediliyor, böylece beklemenin daha fazlası diğer hedefleri avlayarak geçiyor",
   "changelog.r1800.3": "Geç başlayan bir FATE'in savaşın ortasında bırakılması düzeltildi",

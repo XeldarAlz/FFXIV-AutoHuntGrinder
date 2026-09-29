@@ -237,6 +237,7 @@
   "changelog.new": "新着",
   "changelog.changes.one": "{0}件の変更",
   "changelog.changes.other": "{0}件の変更",
+  "changelog.r1810.1": "情報ページのPatreonの下にBuy Me a Coffeeボタンを追加",
   "changelog.r1800.1": "FATEの討伐対象のFATEが発生していない間、他の対象を狩るようになりました（設定 > 一般 に新しいFATE設定）",
   "changelog.r1800.2": "各周の最初からFATEのエリアを確認するようになり、待ち時間の多くを他の対象の討伐に使えるようになりました",
   "changelog.r1800.3": "遅れて始まったFATEを戦闘の途中で放棄してしまう問題を修正",

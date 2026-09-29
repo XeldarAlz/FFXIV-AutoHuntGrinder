@@ -237,6 +237,7 @@
   "changelog.new": "New",
   "changelog.changes.one": "{0} change",
   "changelog.changes.other": "{0} changes",
+  "changelog.r1810.1": "Added a Buy Me a Coffee button under Patreon on the About page",
   "changelog.r1800.1": "Added hunting other marks while a FATE mark's FATE is down, with new FATE settings under Settings > General",
   "changelog.r1800.2": "FATE zones are now checked from the start of each pass, so more of the wait is spent hunting other marks",
   "changelog.r1800.3": "Fixed a FATE that started late being abandoned in the middle of the fight",

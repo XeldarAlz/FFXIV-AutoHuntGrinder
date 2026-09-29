@@ -237,6 +237,7 @@
   "changelog.new": "Neu",
   "changelog.changes.one": "{0} Änderung",
   "changelog.changes.other": "{0} Änderungen",
+  "changelog.r1810.1": "Button für Buy Me a Coffee unter Patreon auf der Über-Seite hinzugefügt",
   "changelog.r1800.1": "Andere Ziele werden gejagt, solange das FATE eines FATE-Ziels fehlt, mit neuen FATE-Einstellungen unter Einstellungen > Allgemein",
   "changelog.r1800.2": "FATE-Gebiete werden jetzt ab Beginn jedes Durchgangs geprüft, sodass mehr Wartezeit mit der Jagd auf andere Ziele verbracht wird",
   "changelog.r1800.3": "Ein spät beginnendes FATE wird nicht mehr mitten im Kampf abgebrochen",
