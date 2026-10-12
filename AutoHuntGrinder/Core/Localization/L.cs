@@ -264,6 +264,7 @@ internal static partial class L
         [
             new("changelog.r1900.1", "Fixed the character stopping too far from a hunt board to pick up bills"),
             new("changelog.r1900.2", "Added A/S rank farming by expansion, with optional Lifestream visits to other worlds on the same data center"),
+            new("changelog.r1900.3", "Fixed the character standing idle when a tree or other obstacle blocks line of sight to a hunt target"),
         ];
 
         public static readonly LocString[] Release1810 =

@@ -619,5 +619,6 @@
   "rankFarm.progress": "World {0}/{1}: {2}",
   "rankFarm.whenDone": "After all worlds have been swept",
   "rankFarm.lifestreamPurpose": "Optional world travel between rank farming sweeps.",
-  "changelog.r1900.2": "Added A/S rank farming by expansion, with optional Lifestream visits to other worlds on the same data center"
+  "changelog.r1900.2": "Added A/S rank farming by expansion, with optional Lifestream visits to other worlds on the same data center",
+  "changelog.r1900.3": "Fixed the character standing idle when a tree or other obstacle blocks line of sight to a hunt target"
 }

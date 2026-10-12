@@ -619,5 +619,6 @@
   "rankFarm.progress": "Dünya {0}/{1}: {2}",
   "rankFarm.whenDone": "Tüm dünyalar tarandıktan sonra",
   "rankFarm.lifestreamPurpose": "Rütbe avı turları arasında isteğe bağlı dünya geçişi.",
-  "changelog.r1900.2": "Genişleme paketine göre A/S rütbe avı ve aynı veri merkezindeki diğer dünyalara Lifestream ile isteğe bağlı ziyaretler eklendi"
+  "changelog.r1900.2": "Genişleme paketine göre A/S rütbe avı ve aynı veri merkezindeki diğer dünyalara Lifestream ile isteğe bağlı ziyaretler eklendi",
+  "changelog.r1900.3": "Bir ağaç veya başka bir engel av hedefiyle görüş hattını kestiğinde karakterin hareketsiz kalması düzeltildi"
 }

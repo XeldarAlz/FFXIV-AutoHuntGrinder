@@ -619,5 +619,6 @@
   "rankFarm.progress": "Welt {0}/{1}: {2}",
   "rankFarm.whenDone": "Nachdem alle Welten abgesucht wurden",
   "rankFarm.lifestreamPurpose": "Optionale Weltenreisen zwischen den Suchläufen beim Rang-Farming.",
-  "changelog.r1900.2": "A/S-Rang-Farming nach Erweiterung hinzugefügt, mit optionalen Lifestream-Besuchen auf anderen Welten desselben Datenzentrums"
+  "changelog.r1900.2": "A/S-Rang-Farming nach Erweiterung hinzugefügt, mit optionalen Lifestream-Besuchen auf anderen Welten desselben Datenzentrums",
+  "changelog.r1900.3": "Behoben, dass der Charakter untätig stehen blieb, wenn ein Baum oder ein anderes Hindernis die Sichtlinie zum Jagdziel blockierte"
 }

@@ -619,5 +619,6 @@
   "rankFarm.progress": "服务器 {0}/{1}：{2}",
   "rankFarm.whenDone": "巡查完所有服务器后",
   "rankFarm.lifestreamPurpose": "用于狩猎刷取期间的可选跨服移动。",
-  "changelog.r1900.2": "新增按资料片刷取A级/S级狩猎目标，可选用Lifestream访问同一数据中心的其他服务器"
+  "changelog.r1900.2": "新增按资料片刷取A级/S级狩猎目标，可选用Lifestream访问同一数据中心的其他服务器",
+  "changelog.r1900.3": "修复了树木或其他障碍物遮挡狩猎目标视线时，角色停在原地不动的问题"
 }

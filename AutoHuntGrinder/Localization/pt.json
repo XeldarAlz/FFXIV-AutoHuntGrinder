@@ -619,5 +619,6 @@
   "rankFarm.progress": "Mundo {0}/{1}: {2}",
   "rankFarm.whenDone": "Após explorar todos os mundos",
   "rankFarm.lifestreamPurpose": "Viagens opcionais entre mundos durante o farm de ranks.",
-  "changelog.r1900.2": "Adicionado farm de ranks A/S por expansão, com visitas opcionais pelo Lifestream a outros mundos do mesmo data center"
+  "changelog.r1900.2": "Adicionado farm de ranks A/S por expansão, com visitas opcionais pelo Lifestream a outros mundos do mesmo data center",
+  "changelog.r1900.3": "Corrigido o problema em que o personagem ficava parado quando uma árvore ou outro obstáculo bloqueava a linha de visão até um alvo de caça"
 }

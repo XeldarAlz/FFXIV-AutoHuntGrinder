@@ -619,5 +619,6 @@
   "rankFarm.progress": "Monde {0}/{1} : {2}",
   "rankFarm.whenDone": "Après avoir parcouru tous les Mondes",
   "rankFarm.lifestreamPurpose": "Voyages facultatifs entre les Mondes lors du farm de rangs.",
-  "changelog.r1900.2": "Ajout du farm de rangs A/S par extension, avec visites facultatives via Lifestream sur d\u0027autres Mondes du même centre de données"
+  "changelog.r1900.2": "Ajout du farm de rangs A/S par extension, avec visites facultatives via Lifestream sur d\u0027autres Mondes du même centre de données",
+  "changelog.r1900.3": "Correction du personnage qui restait immobile lorsqu'un arbre ou un autre obstacle bloquait la ligne de vue vers une cible de chasse"
 }
