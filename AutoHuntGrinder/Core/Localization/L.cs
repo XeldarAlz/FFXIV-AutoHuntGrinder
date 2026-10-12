@@ -265,6 +265,11 @@ internal static partial class L
             new("changelog.r1900.1", "Fixed the character stopping too far from a hunt board to pick up bills"),
         ];
 
+        public static readonly LocString[] Release1810 =
+        [
+            new("changelog.r1810.1", "Added a Buy Me a Coffee button under Patreon on the About page"),
+        ];
+
         public static readonly LocString[] Release1800 =
         [
             new("changelog.r1800.1", "Added hunting other marks while a FATE mark's FATE is down, with new FATE settings under Settings > General"),
@@ -291,9 +296,11 @@ internal static partial class L
     internal static class About
     {
         public static readonly LocString SupportTitle = new("about.support.title", "Made with love and care");
-        public static readonly LocString SupportBody = new("about.support.body", "This plugin is a one-person project, built in my free time because I love this game and its community. Keeping it updated takes a lot of those hours. If it has helped you, supporting me on Patreon means I can keep giving it that time. Thank you for being here.");
+        public static readonly LocString SupportBody = new("about.support.body", "This plugin is a one-person project, built in my free time because I love this game and its community. Keeping it updated takes a lot of those hours. If it has helped you, supporting me on Patreon or buying me a coffee means I can keep giving it that time. Thank you for being here.");
         public static readonly LocString SupportButton = new("about.support.button", "Support on Patreon");
         public static readonly LocString PatreonHint = new("about.support.hint", "Open Patreon · right-click to copy");
+        public static readonly LocString CoffeeButton = new("about.support.coffeeButton", "Buy me a coffee");
+        public static readonly LocString CoffeeHint = new("about.support.coffeeHint", "Open Buy Me a Coffee · right-click to copy");
         public static readonly LocString LinkHint = new("about.linkHint", "Click to open · right-click to copy");
         public static readonly LocString MadeBy = new("about.madeBy", "Made by {0}");
         public static readonly LocString Version = new("about.version", "v {0}");
