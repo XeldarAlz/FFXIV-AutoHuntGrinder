@@ -2,6 +2,7 @@ using Dalamud.Game.ClientState.Objects.Types;
 using ECommons.DalamudServices;
 using FFXIVClientStructs.FFXIV.Client.Game.Group;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
+using FFXIVClientStructs.FFXIV.Common.Component.BGCollision;
 using System.Numerics;
 using CSGameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using CSObjectKind = FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind;
@@ -22,6 +23,22 @@ internal static unsafe class MarkFinder
 {
     // The id the game stores when a character targets nothing.
     private const ulong NoTargetId = 0xE0000000;
+    private const float SightHeightMeters = 1.7f;
+
+    // Keep obstructed mobs in the search results: the approach must route around the obstacle to reach them.
+    public static bool HasLineOfSight(in MarkSighting sighting)
+    {
+        if (Svc.Objects.LocalPlayer is not { } player || Resolve(sighting) is null)
+        {
+            return false;
+        }
+
+        var origin = player.Position + Vector3.UnitY * SightHeightMeters;
+        var direction = sighting.Position + Vector3.UnitY * SightHeightMeters - origin;
+        var distance = direction.Length();
+        return distance <= 0.1f
+            || !BGCollisionModule.RaycastMaterialFilter(origin, direction / distance, out _, distance);
+    }
 
     // fateId 0 matches only mobs outside any FATE; any other value matches only mobs spawned by that FATE.
     public static bool TryFindNearest(uint nameId, uint fateId, bool honorClaims, Vector3 from, ReadOnlySpan<ulong> ignored, out MarkSighting sighting, out int claimedSkipped)

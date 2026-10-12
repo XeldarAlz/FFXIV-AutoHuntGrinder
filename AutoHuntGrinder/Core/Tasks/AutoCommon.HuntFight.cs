@@ -156,6 +156,7 @@ public abstract partial class AutoCommon
 
     private async Task<MarkFight> CloseOnMark(MarkHuntContext hunt, ulong markId, string scope)
     {
+        Status = hunt.ApproachLabel;
         var approach = ApproachMeters();
         var mountingAllowed = TerritoryAllowsMount(hunt.TerritoryId);
         var legs = 0;
@@ -185,14 +186,14 @@ public abstract partial class AutoCommon
             }
 
             var mounted = Svc.Condition[ConditionFlag.Mounted];
-            if (live.DistanceToHitbox <= approach || (mounted && live.DistanceToHitbox <= MarkLandingMeters))
+            if (MarkWithinReach(live, approach) || (mounted && live.DistanceToHitbox <= MarkLandingMeters))
             {
                 if (mounted && !await LandAndDismount(destination, LandingStandOffMeters(live), $"{scope}-dismount"))
                 {
                     return MarkFight.Unreachable;
                 }
 
-                if (TryTrackMark(markId, out live) && live.DistanceToHitbox <= approach)
+                if (TryTrackMark(markId, out live) && MarkWithinReach(live, approach))
                 {
                     return MarkFight.Reached;
                 }
@@ -203,7 +204,7 @@ public abstract partial class AutoCommon
             }
 
             var legScope = $"{scope}-approach#{legs + 1}";
-            var plan = await PlanLeg(hunt.TerritoryId, destination, approach, MarkRideMinMeters, mountingAllowed, groundLegFailed, legScope);
+            var plan = await PlanLeg(hunt.TerritoryId, destination, MarkFinder.HasLineOfSight(live) ? approach : MinLegToleranceMeters, MarkRideMinMeters, mountingAllowed, groundLegFailed, legScope);
             if (CancelToken.IsCancellationRequested)
             {
                 return MarkFight.Cancelled;
@@ -218,7 +219,10 @@ public abstract partial class AutoCommon
             var stopAt = plan.Rides ? MarkLandingMeters : approach;
             Diag($"{legScope}: going {plan.Mode} toward {hunt.Name}, {live.DistanceToHitbox:F0}m out");
             var startedAt = Environment.TickCount64;
-            var operation = LegOperation(plan.Mode, plan.Target, MarkLegTolerance(plan.Target, live, stopAt), StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel));
+            // A ground leg keeps a tight destination tolerance even if sight is clear now: the mark can roam behind
+            // cover during the move. The stop condition ends it at attack range only while sight is clear.
+            var tolerance = plan.Rides ? MarkLegTolerance(plan.Target, live, stopAt) : MinLegToleranceMeters;
+            var operation = LegOperation(plan.Mode, plan.Target, tolerance, StopWhenMarkWithin(markId, stopAt, destination, hunt.ApproachLabel, requireSight: !plan.Rides));
             var completed = await RunCancellable(operation, MarkApproachWatchdogMs, legScope, StuckDetector.MoveStallAbort(legScope));
             if (operation.Fault is { } fault)
             {
@@ -246,10 +250,10 @@ public abstract partial class AutoCommon
             return MarkFight.Unreachable;
         }
 
-        return MarkFight.Reached;
+        return TryTrackMark(markId, out last) && MarkWithinReach(last, approach) ? MarkFight.Reached : MarkFight.Unreachable;
     }
 
-    // A leg that ended at once, with the mark still where it was aimed and still out of reach, never moved the character.
+    // A leg that ended at once, with the mark still out of range or behind cover, never reached the mark.
     private static bool WasFalseStart(bool completed, MoveOp operation, long startedAt, ulong markId, float stopAt, Vector3 destination)
     {
         if (!completed || operation.Fault is not null || Environment.TickCount64 - startedAt >= StuckDetector.FalseStartMs)
@@ -263,7 +267,7 @@ public abstract partial class AutoCommon
     // A leg also ends when the mark wanders off from where it was aimed; that is a fresh leg, not a failed one.
     private static bool EndedShortOfStandingMark(ulong markId, float stopAt, Vector3 destination)
         => TryTrackMark(markId, out var live)
-        && live.DistanceToHitbox > stopAt
+        && !MarkWithinReach(live, stopAt)
         && GroundDistance.Between(live.Position, destination) <= MarkDriftMeters;
 
     // Keeps the mark targeted and the preset active until the bill counts the kill. A kill only counts once the bill's
@@ -364,7 +368,7 @@ public abstract partial class AutoCommon
                     hpChangedAt = Environment.TickCount64;
                 }
 
-                if (live.DistanceToHitbox <= reach)
+                if (MarkWithinReach(live, reach))
                 {
                     outOfReachSince = 0;
                 }
@@ -377,7 +381,7 @@ public abstract partial class AutoCommon
                     repositions++;
                     if (repositions > MaxMarkRepositions)
                     {
-                        Diag($"{scope}: {hunt.Name} stayed out of reach through {MaxMarkRepositions} repositions; leaving it");
+                        Diag($"{scope}: {hunt.Name} stayed out of range or behind cover through {MaxMarkRepositions} repositions; leaving it");
                         return MarkFight.Unreachable;
                     }
 
@@ -474,12 +478,12 @@ public abstract partial class AutoCommon
 
         var approach = ApproachMeters();
         var destination = MarkFloorNear(live.Position);
-        Diag($"{scope}: {hunt.Name} stayed {live.DistanceToHitbox:F0}m away, out of reach; walking in");
+        Diag($"{scope}: {hunt.Name} stayed out of range or behind cover ({live.DistanceToHitbox:F0}m away); walking in");
         var parked = ParkHuntPresetMovement();
         HoldCombatMovement(scope);
         try
         {
-            var operation = LegOperation(StepMode(), destination, MarkLegTolerance(destination, live, approach), StopWhenMarkWithin(markId, approach, destination, hunt.FightLabel));
+            var operation = LegOperation(StepMode(), destination, MinLegToleranceMeters, StopWhenMarkWithin(markId, approach, destination, hunt.FightLabel));
             await RunCancellable(operation, MarkRepositionWatchdogMs, scope, StuckDetector.MoveStallAbort(scope));
             if (operation.Fault is { } fault)
             {
@@ -497,7 +501,7 @@ public abstract partial class AutoCommon
     }
 
     // Looked up at most every MarkTrackIntervalMs, because the movement library asks every frame.
-    private Func<bool> StopWhenMarkWithin(ulong markId, float meters, Vector3 destination, string label)
+    private Func<bool> StopWhenMarkWithin(ulong markId, float meters, Vector3 destination, string label, bool requireSight = true)
     {
         var nextTrackAt = 0L;
         var stop = false;
@@ -512,11 +516,14 @@ public abstract partial class AutoCommon
 
             nextTrackAt = now + MarkTrackIntervalMs;
             stop = !TryTrackMark(markId, out var live)
-                || live.DistanceToHitbox <= meters
+                || (live.DistanceToHitbox <= meters && (!requireSight || MarkFinder.HasLineOfSight(live)))
                 || GroundDistance.Between(live.Position, destination) > MarkDriftMeters;
             return stop;
         };
     }
+
+    private static bool MarkWithinReach(in MarkSighting live, float meters)
+        => live.DistanceToHitbox <= meters && MarkFinder.HasLineOfSight(live);
 
     private void EnsureHuntCombatPreset()
     {

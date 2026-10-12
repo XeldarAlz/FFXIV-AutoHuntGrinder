@@ -101,6 +101,9 @@ jobs:
       - name: Build (Release)
         run: dotnet build AutoHuntGrinder.sln --configuration Release --no-restore
 
+      - name: Verify mark approach and line-of-sight recovery
+        run: dotnet run --project tests/MarkApproach/MarkApproach.csproj --configuration Release
+
       - name: Find test projects
         id: find_tests
         shell: bash

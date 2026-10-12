@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../AutoHuntGrinder/Core/Tasks/AutoCommon.HuntFight.cs" Link="AutoCommon.HuntFight.cs" />
+    <Compile Include="../../AutoHuntGrinder/Core/Tasks/MarkOutcome.cs" Link="MarkOutcome.cs" />
+  </ItemGroup>
+</Project>
