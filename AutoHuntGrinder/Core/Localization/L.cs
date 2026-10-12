@@ -260,6 +260,11 @@ internal static partial class L
         public static readonly LocString New = new("changelog.new", "New");
         public static readonly LocPlural Changes = new("changelog.changes", "{0} change", "{0} changes");
 
+        public static readonly LocString[] Release1900 =
+        [
+            new("changelog.r1900.1", "Fixed the character stopping too far from a hunt board to pick up bills"),
+        ];
+
         public static readonly LocString[] Release1800 =
         [
             new("changelog.r1800.1", "Added hunting other marks while a FATE mark's FATE is down, with new FATE settings under Settings > General"),

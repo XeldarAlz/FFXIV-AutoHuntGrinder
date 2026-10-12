@@ -20,7 +20,9 @@ public abstract partial class AutoCommon
     private const int BillPickupAttempts = 3;
     private const int BoardObjectWaitMs = 10_000;
     private const int BoardApproachWatchdogMs = 20_000;
-    private const float BoardApproachToleranceMeters = 2f;
+    // Travel arrival includes slack; like the triad NPC approach, use a strict distance before interacting.
+    private const float BoardInteractRangeMeters = 3f;
+    private const float BoardApproachToleranceMeters = 0.5f;
     // A board hangs on a wall, so the walk aims at the reachable floor in front of it rather than at the board itself.
     private const float BoardStandSearchMeters = 5f;
     private const int BoardReadyTimeoutMs = 10_000;
@@ -230,6 +232,12 @@ public abstract partial class AutoCommon
 
     private async Task<BillAcceptOutcome> TryPickUpBillOnce(HuntBill bill, int boardIndex, string scope)
     {
+        // Dismounting can move the player, so finish it before choosing where to stand at the board.
+        if (!await ReadyToUseBoard(scope))
+        {
+            return BillAcceptOutcome.Failed;
+        }
+
         var board = await ApproachBoard(HuntBoards.Get(boardIndex).ObjectId, scope);
         if (board is null
             || !await ReadyToUseBoard(scope)
@@ -255,7 +263,7 @@ public abstract partial class AutoCommon
             return null;
         }
 
-        if (board.IsInInteractRange())
+        if (BoardWithinInteractRange(board))
         {
             return board;
         }
@@ -267,14 +275,14 @@ public abstract partial class AutoCommon
         var approach = new MoveOp(move => move.MoveInZone(
             standPoint,
             MovementConfig.InteractRange.WithTolerance(BoardApproachToleranceMeters),
-            () => board.IsInInteractRange()));
+            () => BoardWithinInteractRange(board)));
         await RunCancellable(approach, BoardApproachWatchdogMs, approachScope, StuckDetector.MoveStallAbort(approachScope));
         if (approach.Fault is { } fault)
         {
             Diag($"{approachScope}: faulted: {fault.Message}");
         }
 
-        if (board.IsInInteractRange())
+        if (!CancelToken.IsCancellationRequested && BoardWithinInteractRange(board))
         {
             return board;
         }
@@ -282,6 +290,11 @@ public abstract partial class AutoCommon
         Diag($"{approachScope}: still out of interact range, {DistanceTo(boardPosition):F1}m from the board");
         return null;
     }
+
+    private static bool BoardWithinInteractRange(IGameObject board)
+        => Svc.Objects.LocalPlayer is { } player
+            && Vector3.DistanceSquared(player.Position, board.Position) <= BoardInteractRangeMeters * BoardInteractRangeMeters
+            && board.IsInInteractRange();
 
     private async Task<bool> ReadyToUseBoard(string scope)
     {
@@ -304,6 +317,12 @@ public abstract partial class AutoCommon
     {
         NpcInteraction.Target(board);
         await WaitUntilTimed(() => NpcInteraction.IsTargeted(board), BoardTargetSettleMs, $"{scope}-target", checkFrames: 1);
+        if (CancelToken.IsCancellationRequested || !BoardWithinInteractRange(board))
+        {
+            Diag($"{scope}: not interacting with the board, {DistanceTo(board.Position):F1}m away; approach will be retried");
+            return false;
+        }
+
         var result = NpcInteraction.Interact(board);
         if (result == 0)
         {

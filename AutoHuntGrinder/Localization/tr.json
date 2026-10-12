@@ -237,6 +237,7 @@
   "changelog.new": "Yeni",
   "changelog.changes.one": "{0} değişiklik",
   "changelog.changes.other": "{0} değişiklik",
+  "changelog.r1900.1": "Karakterin av ilanlarını almak için panodan çok uzakta durması düzeltildi",
   "changelog.r1800.1": "Bir FATE hedefinin FATE'i yokken diğer hedefler avlanır; yeni FATE ayarları Ayarlar > Genel altında",
   "changelog.r1800.2": "FATE bölgeleri artık her turun başından itibaren kontrol ediliyor, böylece beklemenin daha fazlası diğer hedefleri avlayarak geçiyor",
   "changelog.r1800.3": "Geç başlayan bir FATE'in savaşın ortasında bırakılması düzeltildi",
