@@ -38,10 +38,10 @@ internal static class ObjectivePlanner
 
     public static bool HasHuntSpawns(in HuntObjective objective, uint territoryId) => HuntMarkZoneOf(objective, territoryId) != 0;
 
-    // Only a custom objective is hunted by mark rules, so only one falls back on the spawn points its zone's hunt marks
-    // share; territoryId 0 asks for that zone.
+    // Custom mobs and rank farming use hunt-mark spawn points; Hunting Log targets keep their ordinary mob data.
+    // territoryId 0 asks for the mark's zone.
     private static uint HuntMarkZoneOf(in HuntObjective objective, uint territoryId)
-        => objective.Source == ObjectiveSource.Custom ? HuntSpawns.ZoneOf(objective.NameId, territoryId) : 0;
+        => objective.Source is ObjectiveSource.Custom or ObjectiveSource.RankFarm ? HuntSpawns.ZoneOf(objective.NameId, territoryId) : 0;
 
     public static HuntObjective[] Plan(IReadOnlyList<HuntObjective> objectives)
     {

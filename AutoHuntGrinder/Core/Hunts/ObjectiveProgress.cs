@@ -1,5 +1,6 @@
 using AutoHuntGrinder.Core.Custom;
 using AutoHuntGrinder.Core.HuntingLog;
+using AutoHuntGrinder.Core.Marks;
 
 namespace AutoHuntGrinder.Core.Hunts;
 
@@ -8,11 +9,13 @@ internal static class ObjectiveProgress
 {
     private const int SourceKeyBits = 16;
     private const string CustomListName = "your custom list";
+    private static RankFarmState? Farm => Plugin.Instance.Controller.SessionSnapshot?.RankFarm;
 
     public static ushort Killed(in HuntObjective objective) => objective.Source switch
     {
         ObjectiveSource.HuntingLog => HuntingLogReader.KilledForKey(objective.SourceKey),
         ObjectiveSource.Custom => CustomEntry(objective)?.Killed ?? objective.Killed,
+        ObjectiveSource.RankFarm => Farm?.Killed(objective.NameId) ?? objective.Killed,
         _ => objective.Killed,
     };
 
@@ -29,6 +32,7 @@ internal static class ObjectiveProgress
         ObjectiveSource.HuntingLog => HuntingLogRegistry.TryParseSourceKey(objective.SourceKey, out var slot, out _, out _, out _)
             && HuntingLogReader.Status(slot) != HuntingLogStatus.Unavailable,
         ObjectiveSource.Custom => CustomEntry(objective) is { Enabled: true },
+        ObjectiveSource.RankFarm => Farm?.Tracks(ECommons.DalamudServices.Svc.Objects.LocalPlayer?.CurrentWorld.RowId ?? 0, objective.NameId) == true,
         _ => false,
     };
 
@@ -48,6 +52,7 @@ internal static class ObjectiveProgress
 
     public static string SourceName(in HuntObjective objective)
     {
+        if (objective.Source == ObjectiveSource.RankFarm) return "your rank farm";
         if (objective.Source != ObjectiveSource.HuntingLog)
         {
             return CustomListName;
@@ -61,6 +66,7 @@ internal static class ObjectiveProgress
     // For log lines only.
     public static string Describe(in HuntObjective objective)
     {
+        if (objective.Source == ObjectiveSource.RankFarm) return IsTracked(objective) ? "selected for this world" : "not on the planned world";
         if (objective.Source == ObjectiveSource.HuntingLog)
         {
             return HuntingLogRegistry.TryParseSourceKey(objective.SourceKey, out var slot, out _, out _, out _)

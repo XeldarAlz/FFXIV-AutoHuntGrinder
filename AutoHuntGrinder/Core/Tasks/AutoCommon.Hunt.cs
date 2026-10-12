@@ -841,7 +841,7 @@ public abstract partial class AutoCommon
         public bool HonorsClaims => FateId == 0 && !Elite && !IsHuntMark;
 
         // The game keeps no counter for a custom mob, so the kill ledger has to see it fall.
-        public bool WatchesKills => IsQuarry && Objective.Source == ObjectiveSource.Custom;
+        public bool WatchesKills => IsQuarry && Objective.Source is (ObjectiveSource.Custom or ObjectiveSource.RankFarm);
 
         // Bill spawns carry measured heights; the position dataset's are coarse hints.
         public bool SnapsHintedHeights => IsQuarry;

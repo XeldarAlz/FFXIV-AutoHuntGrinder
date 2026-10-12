@@ -276,7 +276,7 @@ internal sealed class HistoryPage
     private static LocString NamesHeading(HuntMode mode) => mode switch
     {
         HuntMode.HuntingLog => L.History.TooltipLogs,
-        HuntMode.CustomList => L.History.TooltipMobs,
+        HuntMode.CustomList or HuntMode.RankFarm => L.History.TooltipMobs,
         _ => L.History.TooltipBills,
     };
 

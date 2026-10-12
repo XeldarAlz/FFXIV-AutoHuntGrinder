@@ -33,7 +33,7 @@ internal static class PlanCard
     private const string AfterTokenId = "##ahg_token_after";
     private const string OrdinalMark = ".";
 
-    private static readonly string[] subjectTokenIds = ["##ahg_token_bills", "##ahg_token_logs", "##ahg_token_mobs"];
+    private static readonly string[] subjectTokenIds = ["##ahg_token_bills", "##ahg_token_logs", "##ahg_token_mobs", "##ahg_token_ranks"];
 
     private static readonly AfterRunAction[] afterRunOrder =
         [AfterRunAction.StayLoggedIn, AfterRunAction.ReturnToInn, AfterRunAction.Logout, AfterRunAction.CloseGame];
@@ -253,6 +253,7 @@ internal static class PlanCard
     {
         HuntMode.HuntingLog => L.HuntingLog.WhenDone,
         HuntMode.CustomList => L.CustomList.WhenDone,
+        HuntMode.RankFarm => L.RankFarm.WhenDone,
         _ => L.Hunt.WhenDone,
     };
 

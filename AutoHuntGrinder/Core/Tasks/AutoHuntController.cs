@@ -2,6 +2,7 @@ using AutoHuntGrinder.Core.Custom;
 using AutoHuntGrinder.Core.External;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
+using AutoHuntGrinder.Core.Marks;
 using clib.Services;
 
 namespace AutoHuntGrinder.Core.Tasks;
@@ -120,6 +121,23 @@ internal sealed partial class AutoHuntController
         }
     }
 
+    public void StartRankFarm()
+    {
+        var configuration = Plugin.Instance.Configuration;
+        var marks = RankFarmSelection.Marks(configuration);
+        var worlds = RankFarmSelection.Worlds(configuration.FarmVisitWorlds);
+        if (marks.Length == 0 || worlds.Length == 0 || !RequiredPluginsReady()) return;
+        if (configuration.FarmVisitWorlds && (!LifestreamIPC.Instance.Available || LifestreamIPC.Instance.IsBusy()))
+        {
+            ECommons.DalamudServices.Svc.Chat.PrintError($"{AhgConstants.LogPrefix} Cannot start world visits: Lifestream is unavailable or busy.");
+            return;
+        }
+
+        activeBills = [];
+        activeLogSlots = [];
+        BeginRun(new AutoHuntSession(new RankFarmState(marks, worlds)), $"{marks.Length} rank mark(s) across {worlds.Length} world(s)");
+    }
+
     // Credits kills as they land, so the stat tiles keep pace with the live kill counts. A paused run is left alone,
     // because Resume makes the game state its new zero point.
     public void Tick()
@@ -172,6 +190,7 @@ internal sealed partial class AutoHuntController
     {
         HuntMode.HuntingLog => new AutoHuntingLog(activeLogSlots, owningSession, progress),
         HuntMode.CustomList => new AutoCustomHunt(owningSession, progress),
+        HuntMode.RankFarm => new AutoRankFarm(owningSession, progress),
         _                   => new AutoHunt(activeBills, owningSession, progress),
     };
 
@@ -180,6 +199,7 @@ internal sealed partial class AutoHuntController
     {
         HuntMode.HuntingLog => activeLogSlots.Length > 0,
         HuntMode.CustomList => true,
+        HuntMode.RankFarm => run.RankFarm is { Finished: false },
         _                   => activeBills.Length > 0,
     };
 
@@ -216,6 +236,7 @@ internal sealed partial class AutoHuntController
     // the pathfinder are released here as well.
     private static void ReleaseHelpers()
     {
+        AutoRankFarm.Release();
         BossModIPC.Instance.ClearActive();
         BossModIPC.Instance.ReleaseMovement();
         NavmeshIPC.Instance.Stop();

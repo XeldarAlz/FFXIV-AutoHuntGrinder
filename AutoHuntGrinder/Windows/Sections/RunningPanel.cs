@@ -70,11 +70,13 @@ internal static class RunningPanel
 
     private static string InPlay(AutoHuntController controller)
     {
+        if (controller.SessionSnapshot?.RankFarm is { Finished: false } farm)
+            return Loc.T(L.RankFarm.Progress, farm.WorldIndex + 1, farm.Worlds.Length, Core.Marks.RankFarmSelection.WorldName(farm.World));
         var mode = controller.Mode;
         var count = mode switch
         {
             HuntMode.HuntingLog => controller.ActiveHuntingLogSlots.Count,
-            HuntMode.CustomList => controller.SessionSnapshot?.BillNames.Count ?? 0,
+            HuntMode.CustomList or HuntMode.RankFarm => controller.SessionSnapshot?.BillNames.Count ?? 0,
             _ => controller.ActiveBills.Count,
         };
         uint territoryId = Svc.ClientState.TerritoryType;
@@ -85,7 +87,7 @@ internal static class RunningPanel
     private static LocPlural InPlayFormat(HuntMode mode) => mode switch
     {
         HuntMode.HuntingLog => L.Run.LogsInPlay,
-        HuntMode.CustomList => L.Run.MobsInPlay,
+        HuntMode.CustomList or HuntMode.RankFarm => L.Run.MobsInPlay,
         _ => L.Run.InPlay,
     };
 

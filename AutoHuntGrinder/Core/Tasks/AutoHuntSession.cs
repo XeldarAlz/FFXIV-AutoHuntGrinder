@@ -1,6 +1,7 @@
 using AutoHuntGrinder.Core.Custom;
 using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Hunts;
+using AutoHuntGrinder.Core.Marks;
 using ECommons.DalamudServices;
 using System.Threading;
 
@@ -24,6 +25,22 @@ public sealed class AutoHuntSession
     private long pausedMs;
     private long pauseStartedAtMs;
     private DateTime? endedAt;
+    private int farmKillsSampled;
+
+    internal RankFarmState? RankFarm { get; }
+
+    internal AutoHuntSession(RankFarmState farm)
+    {
+        Mode = HuntMode.RankFarm;
+        RankFarm = farm;
+        ledgers = [];
+        logLedgers = [];
+        mobLedgers = [];
+        logPassesUsed = [];
+        billNames = farm.Marks.Select(mark => HuntMarkRegistry.NameOf(mark.NameId)).ToArray();
+        JobAbbreviation = CurrentJobAbbreviation();
+        Rebaseline();
+    }
 
     public AutoHuntSession(IReadOnlyList<HuntBill> bills)
     {
@@ -244,6 +261,11 @@ public sealed class AutoHuntSession
     {
         switch (Mode)
         {
+            case HuntMode.RankFarm:
+                var total = RankFarm?.TotalKills ?? 0;
+                if (credit) MarksKilled += Math.Max(0, total - farmKillsSampled);
+                farmKillsSampled = total;
+                break;
             case HuntMode.HuntingLog:
                 HuntingLogReader.Refresh(force: true);
                 for (var index = 0; index < logLedgers.Length; index++)

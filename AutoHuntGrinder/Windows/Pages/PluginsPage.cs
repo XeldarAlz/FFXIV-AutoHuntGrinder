@@ -50,6 +50,7 @@ internal sealed class PluginsPage
     {
         ExternalPlugin.Vnavmesh => Loc.T(L.Plugins.PurposeVnavmesh),
         ExternalPlugin.BossMod  => Loc.T(L.Plugins.PurposeBossMod),
+        ExternalPlugin.Lifestream => Loc.T(L.RankFarm.LifestreamPurpose),
         _                       => ExternalPlugins.Catalog[plugin].Purpose,
     };
 

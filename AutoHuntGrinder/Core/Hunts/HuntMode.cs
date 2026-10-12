@@ -5,4 +5,5 @@ public enum HuntMode : byte
     MarkBills,
     HuntingLog,
     CustomList,
+    RankFarm,
 }

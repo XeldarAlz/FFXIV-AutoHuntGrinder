@@ -41,9 +41,9 @@ internal static class HuntMarkRegistry
 
     public static bool IsHuntMark(uint nameId) => IndexOf(nameId) != NotFound;
 
-    // Only a custom objective is hunted by mark rules; the Hunting Log names ordinary mobs and keeps the ordinary ones.
+    // Custom and rank farm objectives use mark rules; the Hunting Log keeps ordinary mob rules.
     public static HuntMarkRank? RankOf(in HuntObjective objective)
-        => objective.Source == ObjectiveSource.Custom && TryGet(objective.NameId, out var mark) ? mark.Rank : null;
+        => objective.Source is (ObjectiveSource.Custom or ObjectiveSource.RankFarm) && TryGet(objective.NameId, out var mark) ? mark.Rank : null;
 
     // The SS marks and their minions spawn in any zone of their expansion; the zone kept for them is only the first that
     // lists them.

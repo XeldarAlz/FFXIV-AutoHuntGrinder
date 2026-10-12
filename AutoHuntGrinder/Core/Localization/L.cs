@@ -263,6 +263,7 @@ internal static partial class L
         public static readonly LocString[] Release1900 =
         [
             new("changelog.r1900.1", "Fixed the character stopping too far from a hunt board to pick up bills"),
+            new("changelog.r1900.2", "Added A/S rank farming by expansion, with optional Lifestream visits to other worlds on the same data center"),
         ];
 
         public static readonly LocString[] Release1810 =

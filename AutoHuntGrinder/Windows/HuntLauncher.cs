@@ -3,6 +3,8 @@ using AutoHuntGrinder.Core.Game.Ops;
 using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Localization;
+using AutoHuntGrinder.Core.Marks;
+using AutoHuntGrinder.Core.Ipc;
 using AutoHuntGrinder.Windows.Sections;
 using Dalamud.Bindings.ImGui;
 using ECommons.DalamudServices;
@@ -56,6 +58,9 @@ internal static class HuntLauncher
         var plugin = Plugin.Instance;
         switch (mode)
         {
+            case HuntMode.RankFarm:
+                plugin.Controller.StartRankFarm();
+                return;
             case HuntMode.HuntingLog:
                 plugin.Controller.StartHuntingLog(plugin.Configuration.HuntingLogQueue);
                 return;
@@ -80,6 +85,7 @@ internal static class HuntLauncher
         {
             HuntMode.HuntingLog => AssessLogs(configuration.HuntingLogQueue),
             HuntMode.CustomList => AssessCustom(configuration.CustomMobs),
+            HuntMode.RankFarm => AssessRankFarm(configuration),
             _ => AssessBills(configuration),
         };
         cachedFrame = frame;
@@ -91,6 +97,8 @@ internal static class HuntLauncher
     {
         switch (plan.Mode)
         {
+            case HuntMode.RankFarm:
+                return Loc.T(L.RankFarm.Marks, plan.Picked);
             case HuntMode.HuntingLog:
                 var queue = configuration.HuntingLogQueue;
                 if (queue.Count == 0)
@@ -114,6 +122,7 @@ internal static class HuntLauncher
 
     public static string Sublabel(Configuration configuration, in Plan plan)
     {
+        if (plan.Mode == HuntMode.RankFarm) return SubjectToken(configuration, plan);
         if (plan.Mode == HuntMode.MarkBills)
         {
             var startList = BillSelection.ResolveStartList(configuration);
@@ -142,9 +151,10 @@ internal static class HuntLauncher
         {
             HuntMode.HuntingLog => L.HuntingLog.ReasonPick,
             HuntMode.CustomList => L.CustomList.ReasonPick,
+            HuntMode.RankFarm => L.RankFarm.Pick,
             _ => L.Hunt.ReasonPickBill,
         }),
-        Readiness.Blocked => Loc.T(plan.Mode == HuntMode.CustomList ? L.CustomList.ReasonBlocked : L.HuntingLog.ReasonBlocked),
+        Readiness.Blocked => Loc.T(plan.Mode == HuntMode.RankFarm ? L.RankFarm.Blocked : plan.Mode == HuntMode.CustomList ? L.CustomList.ReasonBlocked : L.HuntingLog.ReasonBlocked),
         _ => Loc.T(plan.Mode switch
         {
             HuntMode.HuntingLog => L.HuntingLog.ReasonAllDone,
@@ -156,6 +166,7 @@ internal static class HuntLauncher
     // The line under the plan sentence in the two modes that have no chip strip.
     public static string Caption(in Plan plan)
     {
+        if (plan.Mode == HuntMode.RankFarm) return Loc.T(plan.Readiness == Readiness.Blocked ? L.RankFarm.Blocked : L.RankFarm.Hint);
         if (plan.Mode == HuntMode.CustomList)
         {
             return plan.Readiness switch
@@ -260,6 +271,15 @@ internal static class HuntLauncher
         var workable = BillSelection.ResolveStartList(configuration).Count;
         var readiness = picked == 0 ? Readiness.NothingPicked : workable == 0 ? Readiness.AllDone : Readiness.Ready;
         return new Plan(HuntMode.MarkBills, readiness, picked, 0, HuntingLogRegistry.NoLog);
+    }
+
+    private static Plan AssessRankFarm(Configuration configuration)
+    {
+        var count = RankFarmSelection.Marks(configuration).Length;
+        var readiness = count == 0 ? Readiness.NothingPicked
+            : configuration.FarmVisitWorlds && (!LifestreamIPC.Instance.Available || LifestreamIPC.Instance.IsBusy()) ? Readiness.Blocked
+            : Readiness.Ready;
+        return new Plan(HuntMode.RankFarm, readiness, count, count, HuntingLogRegistry.NoLog);
     }
 
     private static Plan AssessLogs(List<byte> queue)

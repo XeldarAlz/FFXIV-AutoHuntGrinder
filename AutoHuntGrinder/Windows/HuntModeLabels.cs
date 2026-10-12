@@ -10,6 +10,7 @@ internal static class HuntModeLabels
     {
         HuntMode.HuntingLog => FontAwesomeIcon.BookOpen,
         HuntMode.CustomList => FontAwesomeIcon.Crosshairs,
+        HuntMode.RankFarm => FontAwesomeIcon.Crosshairs,
         _ => FontAwesomeIcon.Scroll,
     };
 
@@ -17,6 +18,7 @@ internal static class HuntModeLabels
     {
         HuntMode.HuntingLog => L.HuntingLog.ModeHuntingLog,
         HuntMode.CustomList => L.HuntingLog.ModeCustom,
+        HuntMode.RankFarm => L.RankFarm.Mode,
         _ => L.HuntingLog.ModeBills,
     });
 }

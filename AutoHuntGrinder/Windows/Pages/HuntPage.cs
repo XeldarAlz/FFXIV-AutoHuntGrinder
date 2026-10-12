@@ -10,7 +10,7 @@ internal sealed class HuntPage
 {
     private const float SwitchRevealMs = 320f;
 
-    private static readonly HuntMode[] modes = [HuntMode.MarkBills, HuntMode.HuntingLog, HuntMode.CustomList];
+    private static readonly HuntMode[] modes = [HuntMode.MarkBills, HuntMode.HuntingLog, HuntMode.CustomList, HuntMode.RankFarm];
 
     private readonly Segmented.Item[] modeItems = new Segmented.Item[modes.Length];
 
@@ -55,6 +55,9 @@ internal sealed class HuntPage
         {
             switch (mode)
             {
+                case HuntMode.RankFarm:
+                    RankFarmEditor.Draw(configuration, scrollToLibrary);
+                    break;
                 case HuntMode.HuntingLog:
                     HuntingLogLibrary.Draw(configuration, controller, scrollToLibrary);
                     break;

@@ -52,6 +52,7 @@ internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress 
         ReportObjectives(planned);
         for (var objectiveIndex = 0; objectiveIndex < planned.Length; objectiveIndex++)
         {
+            if (!CanContinueObjectives()) return false;
             ReportObjectiveStop(objectiveIndex);
             var objective = ObjectiveProgress.Live(planned[objectiveIndex]);
             if (objective.Done || RunSession.IsGivenUp(objective))
@@ -65,7 +66,7 @@ internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress 
                 Diag("Run: upkeep ran; the next target starts from wherever it left the character");
             }
 
-            if (CancelToken.IsCancellationRequested)
+            if (CancelToken.IsCancellationRequested || !CanContinueObjectives())
             {
                 return false;
             }
@@ -76,7 +77,7 @@ internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress 
             ReportPhase(HuntPhase.Travelling);
             var killsBefore = RunSession.MarksKilled;
             var outcome = await HuntQuarry(objective);
-            if (CancelToken.IsCancellationRequested)
+            if (CancelToken.IsCancellationRequested || !CanContinueObjectives())
             {
                 return false;
             }
@@ -89,6 +90,7 @@ internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress 
                 return false;
             }
 
+            OnObjectiveFinished(objective, outcome);
             if (!Settle(objective, name, outcome))
             {
                 return false;
@@ -122,6 +124,10 @@ internal abstract class AutoObjectiveHunt(AutoHuntSession session, HuntProgress 
     }
 
     private protected virtual bool LeavesForRun(in HuntObjective objective, string name, MarkOutcome outcome) => false;
+
+    private protected virtual bool CanContinueObjectives() => true;
+
+    private protected virtual void OnObjectiveFinished(in HuntObjective objective, MarkOutcome outcome) { }
 
     // A Stop or Pause cancels the task before its last lines run, and those lines must not overwrite what the controller set.
     private protected void ReportPhase(HuntPhase phase)

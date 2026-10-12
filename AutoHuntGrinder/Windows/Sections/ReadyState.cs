@@ -10,7 +10,7 @@ namespace AutoHuntGrinder.Windows.Sections;
 
 internal static class ReadyState
 {
-    public enum Kind { SetupNeeded, PickBills, PickLogs, PickMobs, NothingToHunt, AllDone, Ready, Running, Paused }
+    public enum Kind { SetupNeeded, PickBills, PickLogs, PickMobs, NothingToHunt, AllDone, Ready, Running, Paused, PickRanks }
 
     public readonly record struct Info(Kind Kind, Vector4 Accent, Vector4 AccentSoft, FontAwesomeIcon Icon, string Title, string Detail);
 
@@ -57,8 +57,8 @@ internal static class ReadyState
         {
             HuntLauncher.Readiness.NothingPicked => Pick(mode),
             HuntLauncher.Readiness.Blocked => new Info(Kind.NothingToHunt, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.Ban,
-                Loc.T(mode == HuntMode.CustomList ? L.CustomList.TitleBlocked : L.HuntingLog.TitleBlocked),
-                Loc.T(mode == HuntMode.CustomList ? L.CustomList.DetailBlocked : L.HuntingLog.DetailBlocked)),
+                Loc.T(mode == HuntMode.RankFarm ? L.RankFarm.Mode : mode == HuntMode.CustomList ? L.CustomList.TitleBlocked : L.HuntingLog.TitleBlocked),
+                Loc.T(mode == HuntMode.RankFarm ? L.RankFarm.Blocked : mode == HuntMode.CustomList ? L.CustomList.DetailBlocked : L.HuntingLog.DetailBlocked)),
             HuntLauncher.Readiness.AllDone => new Info(Kind.AllDone, Styling.AccentMint, Styling.AccentMintSoft, FontAwesomeIcon.CheckDouble,
                 Loc.T(DoneTitle(mode)), Loc.T(DoneDetail(mode))),
             _ => new Info(Kind.Ready, Styling.AccentMint, Styling.AccentMintSoft, FontAwesomeIcon.CheckCircle,
@@ -68,6 +68,8 @@ internal static class ReadyState
 
     private static Info Pick(HuntMode mode) => mode switch
     {
+        HuntMode.RankFarm => new Info(Kind.PickRanks, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.Crosshairs,
+            Loc.T(L.RankFarm.Pick), Loc.T(L.RankFarm.Hint)),
         HuntMode.HuntingLog => new Info(Kind.PickLogs, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.BookOpen,
             Loc.T(L.HuntingLog.TitlePick), Loc.T(L.HuntingLog.DetailPick)),
         HuntMode.CustomList => new Info(Kind.PickMobs, Styling.AccentAmber, Styling.AccentAmberSoft, FontAwesomeIcon.Crosshairs,
@@ -92,6 +94,7 @@ internal static class ReadyState
 
     private static LocString ReadyDetail(HuntMode mode) => mode switch
     {
+        HuntMode.RankFarm => L.RankFarm.Ready,
         HuntMode.HuntingLog => L.HuntingLog.DetailReady,
         HuntMode.CustomList => L.CustomList.DetailReady,
         _ => L.Hunt.DetailReady,
@@ -105,6 +108,7 @@ internal static class ReadyState
         Kind.PickBills     => Loc.T(L.Shell.StatusPickBills),
         Kind.PickLogs      => Loc.T(L.HuntingLog.StatusPickLogs),
         Kind.PickMobs      => Loc.T(L.CustomList.StatusAddMobs),
+        Kind.PickRanks     => Loc.T(L.RankFarm.Pick),
         Kind.NothingToHunt => Loc.T(L.HuntingLog.StatusNothingToHunt),
         Kind.AllDone       => Loc.T(L.Shell.StatusAllDone),
         Kind.SetupNeeded   => Loc.T(L.Shell.StatusSetupNeeded),
@@ -134,6 +138,7 @@ internal static class ReadyState
 
     private static LocString ReadingLabel(HuntMode mode) => mode switch
     {
+        HuntMode.RankFarm => L.RankFarm.Reading,
         HuntMode.HuntingLog => L.Run.PhaseReadingLogs,
         HuntMode.CustomList => L.Run.PhaseReadingList,
         _                   => L.Run.PhaseReading,
