@@ -4,9 +4,9 @@
     "net10.0-windows7.0": {
       "croizat.clib": {
         "type": "Direct",
-        "requested": "[1.0.99, )",
-        "resolved": "1.0.99",
-        "contentHash": "ZXrWz9K9N2vn9tdNugUYLqNq1tIXkKRQUQ5vIooxBiiSTBDMLaOC8Xhclw849+J47MN++C/rm3gUJkfyqlu9eg==",
+        "requested": "[1.0.104, )",
+        "resolved": "1.0.104",
+        "contentHash": "KYL6rxaMgaJsSqKz0+ZvG5zCXFJBCaJzmOuh6q+qGXWX0bwYTnybd46Tt5a4GxnHmCv+7/qbkBld5aqmfLBP0g==",
         "dependencies": {
           "AllaganLib.GameSheets": "2.2.6",
           "LuminaSupplemental.Excel": "5.1.0"
