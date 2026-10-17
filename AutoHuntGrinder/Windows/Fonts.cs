@@ -210,6 +210,7 @@ internal static class Fonts
         GlyphRanges.MarkRanges(merge, SymbolBlocks);
         GlyphRanges.MarkRanges(extra, Loc.Current.ExtraGlyphRanges);
         GlyphRanges.MarkRanges(extra, Loc.CatalogGlyphRanges);
+        GameTextGlyphs.MarkInto(extra);
         MarkNativeNames(extra);
 
         for (var codepoint = GlyphRanges.FirstNonAsciiCodepoint; codepoint < GlyphRanges.CodepointCount; codepoint++)

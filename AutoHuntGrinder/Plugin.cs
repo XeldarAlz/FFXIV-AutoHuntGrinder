@@ -67,6 +67,7 @@ public sealed class Plugin : IDalamudPlugin
         Kills.HuntingLogChanged += OnHuntingLogChanged;
 
         InitializeLocalization();
+        GameTextGlyphs.Collect();
         Fonts.Initialize(PluginInterface.UiBuilder, PluginDirectory);
         appWindow = new AppWindow(this);
         WindowSystem.AddWindow(appWindow);
