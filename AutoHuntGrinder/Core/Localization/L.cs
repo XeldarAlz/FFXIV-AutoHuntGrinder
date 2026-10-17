@@ -260,6 +260,14 @@ internal static partial class L
         public static readonly LocString New = new("changelog.new", "New");
         public static readonly LocPlural Changes = new("changelog.changes", "{0} change", "{0} changes");
 
+        public static readonly LocString[] Release11000 =
+        [
+            new("changelog.r11000.1", "Added Combat movement under Settings > Humanizer: a dodge delay, a movement delay and extra room from danger rolled for every mark, so characters on the same mark no longer dodge in lockstep"),
+            new("changelog.r11000.2", "Fixed a run started on a crafter or gatherer walking to the first mark and standing there; it now stops with a message, and a job changed during a pause stops the run before the next mark"),
+            new("changelog.r11000.3", "Fixed marks perched above the character, such as Syricta in the Dravanian Forelands, being fought from below for minutes without a hit; the character now lands on the mark's level or walks up to it"),
+            new("changelog.r11000.4", "Fixed the teleport out of the water leaving no time for the trip back, so every underwater rescue ran out of time at once"),
+        ];
+
         public static readonly LocString[] Release1900 =
         [
             new("changelog.r1900.1", "Fixed the character stopping too far from a hunt board to pick up bills"),
