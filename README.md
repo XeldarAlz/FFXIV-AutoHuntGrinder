@@ -39,6 +39,7 @@ Lists every daily and weekly hunt bill from A Realm Reborn through Dawntrail in 
 - **Auto-repair**: Dark Matter first, Grand Company mender as fallback.
 - **Auto-consume**: keeps food and medicine buffs up between marks, HQ first.
 - **Humanizer**: takes random city breaks between marks so long sessions look less mechanical.
+- **Combat movement variation**: rolls a dodge delay, a movement delay and extra room from danger for every mark, so your character does not dodge on the same frame to the same spot as every other user.
 - **Pause & resume**: park a run without losing your progress, and auto-pause while you're in a duty.
 - **Party invites**: auto-declines incoming invites during a run after a random delay, with an optional reply message.
 - **GM alert**: stops the bot when a GM is near, with optional toast, beeps, or custom commands.

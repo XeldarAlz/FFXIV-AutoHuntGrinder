@@ -20,14 +20,60 @@ internal static class HumanizerSettings
     public static void Draw(Configuration configuration)
     {
         DrawBreaksGroup(configuration);
-        using var more = Motion.PushSection("##ahg_humanizer_more", configuration.HumanizerEnabled);
-        if (more is null)
+        using (var more = Motion.PushSection("##ahg_humanizer_more", configuration.HumanizerEnabled))
         {
+            if (more is not null)
+            {
+                DrawWanderingGroup(configuration);
+                DrawCitiesGroup(configuration);
+            }
+        }
+
+        DrawCombatMovementGroup(configuration);
+    }
+
+    // Ported from Auto FATE Grind (issue #17): the same BossMod NormalMovement tuning, rolled per mark instead of per FATE.
+    private static void DrawCombatMovementGroup(Configuration configuration)
+    {
+        using var group = SettingsGroup.Begin(Loc.T(L.Safety.CombatMovement));
+
+        SettingsRow.Draw(Loc.T(L.Safety.CombatMovementEnable),
+            Loc.T(L.Safety.CombatMovementEnableHelp),
+            SettingsControls.ToggleWidth,
+            () => SettingsControls.DrawToggle(configuration, () => configuration.CombatMovementEnabled, value => configuration.CombatMovementEnabled = value, "##ahg_combat_move_on"),
+            SettingsRow.ToggleHeight);
+
+        using var body = Motion.PushSwitch("##ahg_combat_move_body", configuration.CombatMovementEnabled);
+        if (!configuration.CombatMovementEnabled)
+        {
+            SettingsRow.Note(Loc.T(L.Safety.CombatMovementOff));
             return;
         }
 
-        DrawWanderingGroup(configuration);
-        DrawCitiesGroup(configuration);
+        var none = Loc.T(L.Safety.MovementLevelNone);
+        string[] delayLabels = [none, Loc.T(L.Safety.DelayShort), Loc.T(L.Safety.DelayLong)];
+        string[] roomLabels = [none, Loc.T(L.Safety.RoomSmall), Loc.T(L.Safety.RoomMedium), Loc.T(L.Safety.RoomLarge)];
+
+        SettingsRow.Draw(Loc.T(L.Safety.DodgeDelay),
+            Loc.T(L.Safety.DodgeDelayHelp),
+            SettingsControls.ComboRangeWidth(),
+            () => SettingsControls.DrawComboRange(configuration, "##ahg_combat_dodge_min", "##ahg_combat_dodge_max", delayLabels,
+                () => configuration.CombatDodgeDelayMin, value => configuration.CombatDodgeDelayMin = value,
+                () => configuration.CombatDodgeDelayMax, value => configuration.CombatDodgeDelayMax = value));
+
+        SettingsRow.Draw(Loc.T(L.Safety.MoveDelay),
+            Loc.T(L.Safety.MoveDelayHelp),
+            SettingsControls.ComboRangeWidth(),
+            () => SettingsControls.DrawComboRange(configuration, "##ahg_combat_move_min", "##ahg_combat_move_max", delayLabels,
+                () => configuration.CombatMoveDelayMin, value => configuration.CombatMoveDelayMin = value,
+                () => configuration.CombatMoveDelayMax, value => configuration.CombatMoveDelayMax = value));
+
+        SettingsRow.Draw(Loc.T(L.Safety.DangerRoom),
+            Loc.T(L.Safety.DangerRoomHelp),
+            SettingsControls.ComboRangeWidth(),
+            () => SettingsControls.DrawComboRange(configuration, "##ahg_combat_room_min", "##ahg_combat_room_max", roomLabels,
+                () => configuration.CombatCushionMin, value => configuration.CombatCushionMin = value,
+                () => configuration.CombatCushionMax, value => configuration.CombatCushionMax = value));
     }
 
     private static void DrawBreaksGroup(Configuration configuration)

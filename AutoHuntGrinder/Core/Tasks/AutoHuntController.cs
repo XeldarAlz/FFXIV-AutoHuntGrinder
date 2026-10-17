@@ -252,6 +252,7 @@ internal sealed partial class AutoHuntController
     private static void ReleaseHelpers()
     {
         AutoRankFarm.Release();
+        BossModMovementTuning.Release();
         BossModIPC.Instance.ClearActive();
         BossModIPC.Instance.ReleaseMovement();
         NavmeshIPC.Instance.Stop();

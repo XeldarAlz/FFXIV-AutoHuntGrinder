@@ -172,6 +172,7 @@ public abstract partial class AutoCommon
     private async Task<MarkOutcome> RunHunt(MarkHuntContext hunt)
     {
         EnsureHuntCombatPreset();
+        BossModMovementTuning.Apply(HuntCombatPreset.Name, hunt.Name);
         HoldCombatMovement("hunt");
         var startedAt = Environment.TickCount64;
         var outcome = MarkOutcome.Cancelled;

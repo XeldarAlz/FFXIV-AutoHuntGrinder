@@ -14,6 +14,7 @@ internal static class SettingsControls
     public const float RowComboWidth = 170f;
 
     private const float RangeDragWidth = 62f;
+    private const float RangeComboWidth = 96f;
     private const float RangeDashSlot = 14f;
     private const float RangeDragSpeed = 0.25f;
 
@@ -21,6 +22,40 @@ internal static class SettingsControls
 
     public static float RangeInlineWidth()
         => RangeDragWidth * 2f + RangeDashSlot;
+
+    public static float ComboRangeWidth()
+        => RangeComboWidth * 2f + RangeDashSlot;
+
+    // A min-max pair over a fixed list of levels; the config holds indexes into labels.
+    public static void DrawComboRange(Configuration cfg, string minId, string maxId, string[] labels,
+        Func<int> getMin, Action<int> setMin, Func<int> getMax, Action<int> setMax)
+    {
+        var minimum = getMin();
+        if (Dropdown.Draw(minId, labels, ref minimum, RangeComboWidth))
+        {
+            setMin(minimum);
+            if (minimum > getMax())
+            {
+                setMax(minimum);
+            }
+
+            cfg.SaveDebounced();
+        }
+
+        DrawRangeDash();
+
+        var maximum = getMax();
+        if (Dropdown.Draw(maxId, labels, ref maximum, RangeComboWidth))
+        {
+            setMax(maximum);
+            if (maximum < getMin())
+            {
+                setMin(maximum);
+            }
+
+            cfg.SaveDebounced();
+        }
+    }
 
     public static void DrawToggle(Configuration cfg, Func<bool> getter, Action<bool> setter, string id)
     {

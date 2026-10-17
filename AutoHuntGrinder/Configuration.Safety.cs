@@ -29,6 +29,15 @@ public sealed partial class Configuration
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public HashSet<uint> HumanizerCities { get; set; } = BreakCities.NewDefaultSelection();
 
+    // Level indexes into BossMod NormalMovement options, rolled per mark: delays None/Short/Long, cushion None/Small/Medium/Large.
+    public bool CombatMovementEnabled { get; set; } = false;
+    public int CombatDodgeDelayMin { get; set; } = 0;
+    public int CombatDodgeDelayMax { get; set; } = 1;
+    public int CombatMoveDelayMin { get; set; } = 0;
+    public int CombatMoveDelayMax { get; set; } = 0;
+    public int CombatCushionMin { get; set; } = 0;
+    public int CombatCushionMax { get; set; } = 2;
+
     public bool DeclinePartyInvites { get; set; } = false;
     public int DeclineInviteDelayMinSeconds { get; set; } = 2;
     public int DeclineInviteDelayMaxSeconds { get; set; } = 6;

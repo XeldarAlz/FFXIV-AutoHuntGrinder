@@ -88,6 +88,22 @@ internal static partial class L
         public static readonly LocString AllowedCities = new("safety.humanizer.allowedCities", "Allowed cities");
         public static readonly LocString AllowedCitiesHelp = new("safety.humanizer.allowedCitiesHelp", "Tick the cities the plugin is allowed to teleport to. One is picked at random each break. Untick cities you haven't unlocked or don't want visited.");
         public static readonly LocString NoCities = new("safety.humanizer.noCities", "No cities selected, so the Humanizer skips the break and keeps hunting.");
+        public static readonly LocString CombatMovement = new("safety.humanizer.combatMovement", "Combat movement");
+        public static readonly LocString CombatMovementEnable = new("safety.humanizer.combatMovementEnable", "Vary dodging in combat");
+        public static readonly LocString CombatMovementEnableHelp = new("safety.humanizer.combatMovementEnableHelp", "BossMod steps out of an AoE the moment it is telegraphed and stops right at its edge, so every AHG user at a mark dodges on the same frame to the same spot. When on, each mark rolls a dodge delay, a movement delay and a preference for extra room from the ranges below. The hunt preset itself is never changed.");
+        public static readonly LocString CombatMovementOff = new("safety.humanizer.combatMovementOff", "Combat movement variation is off. BossMod dodges the way the hunt preset is set up.");
+        public static readonly LocString DodgeDelay = new("safety.humanizer.dodgeDelay", "Dodge delay");
+        public static readonly LocString DodgeDelayHelp = new("safety.humanizer.dodgeDelayHelp", "How long BossMod waits before stepping out of a telegraphed AoE. One value is rolled per mark from this range. Longer delays mean getting hit more often, more deaths, and more marks skipped for deaths. Casters may also see more hard casts cancelled.");
+        public static readonly LocString MoveDelay = new("safety.humanizer.moveDelay", "Movement delay");
+        public static readonly LocString MoveDelayHelp = new("safety.humanizer.moveDelayHelp", "How long BossMod waits before regular repositioning, such as closing in on a mark. It only applies when starting to move from standing still. Most users can leave this at None.");
+        public static readonly LocString DangerRoom = new("safety.humanizer.dangerRoom", "Prefer extra room from danger");
+        public static readonly LocString DangerRoomHelp = new("safety.humanizer.dangerRoomHelp", "Asks BossMod to prefer spots further inside safe ground rather than the very edge of an AoE. This is a soft preference, not a guaranteed distance: it depends on BossMod's map resolution, and the lower levels may change nothing against large marks.");
+        public static readonly LocString MovementLevelNone = new("safety.humanizer.levelNone", "None");
+        public static readonly LocString DelayShort = new("safety.humanizer.delayShort", "0.5 s");
+        public static readonly LocString DelayLong = new("safety.humanizer.delayLong", "1 s");
+        public static readonly LocString RoomSmall = new("safety.humanizer.roomSmall", "Small");
+        public static readonly LocString RoomMedium = new("safety.humanizer.roomMedium", "Medium");
+        public static readonly LocString RoomLarge = new("safety.humanizer.roomLarge", "Large");
 
         public static readonly LocString InvitesDecline = new("safety.invites.decline", "Decline");
         public static readonly LocString AutoDecline = new("safety.invites.autoDecline", "Auto-decline party invites");
