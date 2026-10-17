@@ -241,6 +241,7 @@
   "changelog.r11000.2": "Fixed a run started on a crafter or gatherer walking to the first mark and standing there; it now stops with a message, and a job changed during a pause stops the run before the next mark",
   "changelog.r11000.3": "Fixed marks perched above the character, such as Syricta in the Dravanian Forelands, being fought from below for minutes without a hit; the character now lands on the mark's level or walks up to it",
   "changelog.r11000.4": "Fixed the teleport out of the water leaving no time for the trip back, so every underwater rescue ran out of time at once",
+  "changelog.r11000.5": "Fixed mark, zone, job and item names showing as boxes instead of characters on Japanese and Chinese clients",
   "changelog.r1900.1": "Fixed the character stopping too far from a hunt board to pick up bills",
   "changelog.r1810.1": "Added a Buy Me a Coffee button under Patreon on the About page",
   "changelog.r1800.1": "Added hunting other marks while a FATE mark's FATE is down, with new FATE settings under Settings > General",

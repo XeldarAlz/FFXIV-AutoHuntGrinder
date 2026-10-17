@@ -241,6 +241,7 @@
   "changelog.r11000.2": "Düzeltildi: Zanaatkâr veya toplayıcıyla başlatılan çalışma ilk hedefe yürüyüp orada dikiliyordu; artık bir mesajla durur ve molada değiştirilen iş, çalışmayı sonraki hedeften önce durdurur",
   "changelog.r11000.3": "Düzeltildi: Dravanian Forelands'daki Syricta gibi karakterin üstünde tüneyen hedeflere dakikalarca aşağıdan vurulamadan saldırılıyordu; karakter artık hedefin seviyesine iner veya ona yürüyerek çıkar",
   "changelog.r11000.4": "Düzeltildi: Sudan çıkış ışınlanması dönüş yolculuğuna zaman bırakmıyor, su altındaki her kurtarma anında zaman aşımına uğruyordu",
+  "changelog.r11000.5": "Düzeltildi: Japonca ve Çince istemcilerde hedef, bölge, iş ve eşya adları karakter yerine kutu olarak görünüyordu",
   "changelog.r1900.1": "Karakterin av ilanlarını almak için panodan çok uzakta durması düzeltildi",
   "changelog.r1810.1": "Hakkında sayfasında Patreon'un altına Buy Me a Coffee düğmesi eklendi",
   "changelog.r1800.1": "Bir FATE hedefinin FATE'i yokken diğer hedefler avlanır; yeni FATE ayarları Ayarlar > Genel altında",

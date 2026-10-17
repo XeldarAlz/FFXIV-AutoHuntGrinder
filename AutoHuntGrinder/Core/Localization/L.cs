@@ -266,6 +266,7 @@ internal static partial class L
             new("changelog.r11000.2", "Fixed a run started on a crafter or gatherer walking to the first mark and standing there; it now stops with a message, and a job changed during a pause stops the run before the next mark"),
             new("changelog.r11000.3", "Fixed marks perched above the character, such as Syricta in the Dravanian Forelands, being fought from below for minutes without a hit; the character now lands on the mark's level or walks up to it"),
             new("changelog.r11000.4", "Fixed the teleport out of the water leaving no time for the trip back, so every underwater rescue ran out of time at once"),
+            new("changelog.r11000.5", "Fixed mark, zone, job and item names showing as boxes instead of characters on Japanese and Chinese clients"),
         ];
 
         public static readonly LocString[] Release1900 =

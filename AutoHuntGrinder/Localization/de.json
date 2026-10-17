@@ -241,6 +241,7 @@
   "changelog.r11000.2": "Behoben: Ein auf einem Handwerker oder Sammler gestarteter Lauf lief zum ersten Ziel und blieb dort stehen; er stoppt jetzt mit einer Meldung, und ein in der Pause gewechselter Job stoppt den Lauf vor dem nächsten Ziel",
   "changelog.r11000.3": "Behoben: Ziele oberhalb des Charakters, etwa Syricta im Dravanischen Hinterland, wurden minutenlang ohne Treffer von unten bekämpft; der Charakter landet jetzt auf der Ebene des Ziels oder läuft zu ihr hinauf",
   "changelog.r11000.4": "Behoben: Der Teleport aus dem Wasser ließ keine Zeit für den Rückweg, sodass jede Rettung unter Wasser sofort an der Zeit scheiterte",
+  "changelog.r11000.5": "Behoben: Namen von Zielen, Gebieten, Jobs und Gegenständen wurden auf japanischen und chinesischen Clients als Kästchen statt Zeichen angezeigt",
   "changelog.r1900.1": "Behoben, dass der Charakter zu weit vom Jagdbrett entfernt stehen blieb, um Jagdaufträge anzunehmen",
   "changelog.r1810.1": "Button für Buy Me a Coffee unter Patreon auf der Über-Seite hinzugefügt",
   "changelog.r1800.1": "Andere Ziele werden gejagt, solange das FATE eines FATE-Ziels fehlt, mit neuen FATE-Einstellungen unter Einstellungen > Allgemein",

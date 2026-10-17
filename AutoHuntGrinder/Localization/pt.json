@@ -241,6 +241,7 @@
   "changelog.r11000.2": "Corrigida a sessão iniciada em um artesão ou coletor que caminhava até o primeiro alvo e ficava parada; agora ela para com uma mensagem, e um job trocado durante a pausa para a sessão antes do próximo alvo",
   "changelog.r11000.3": "Corrigidos os alvos empoleirados acima do personagem, como Syricta nas Terras Dravanianas, que eram atacados de baixo por minutos sem acerto; o personagem agora pousa no nível do alvo ou sobe até ele",
   "changelog.r11000.4": "Corrigido o teleporte para sair da água que não deixava tempo para a volta, fazendo cada resgate subaquático estourar o tempo na hora",
+  "changelog.r11000.5": "Corrigidos os nomes de alvos, zonas, jobs e itens exibidos como quadrados em vez de caracteres em clientes japoneses e chineses",
   "changelog.r1900.1": "Corrigido o problema em que o personagem parava longe demais do quadro de caça para pegar os contratos",
   "changelog.r1810.1": "Adicionado um botão do Buy Me a Coffee abaixo do Patreon na página Sobre",
   "changelog.r1800.1": "Caça outros alvos enquanto o FATE de um alvo de FATE não está ativo, com novos ajustes em Configurações > Geral",

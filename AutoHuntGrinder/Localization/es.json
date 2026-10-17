@@ -241,6 +241,7 @@
   "changelog.r11000.2": "Corregido que una sesión iniciada con un artesano o recolector caminara hasta el primer objetivo y se quedara allí; ahora se detiene con un mensaje, y un cambio de trabajo durante una pausa detiene la sesión antes del siguiente objetivo",
   "changelog.r11000.3": "Corregido que objetivos encaramados por encima del personaje, como Syricta en Altos de Dravania, se combatieran desde abajo durante minutos sin acertar; el personaje ahora aterriza al nivel del objetivo o sube hasta él",
   "changelog.r11000.4": "Corregido que el teletransporte para salir del agua no dejara tiempo para el viaje de vuelta, así que cada rescate bajo el agua se quedaba sin tiempo al instante",
+  "changelog.r11000.5": "Corregido que los nombres de objetivos, zonas, trabajos y objetos se mostraran como cuadros en vez de caracteres en clientes japoneses y chinos",
   "changelog.r1900.1": "Corregido un problema por el que el personaje se detenía demasiado lejos del tablón de caza para recoger los encargos",
   "changelog.r1810.1": "Añadido un botón de Buy Me a Coffee debajo de Patreon en la página Acerca de",
   "changelog.r1800.1": "Se cazan otros objetivos mientras no está activo el FATE de un objetivo de FATE, con nuevos ajustes en Ajustes > General",
