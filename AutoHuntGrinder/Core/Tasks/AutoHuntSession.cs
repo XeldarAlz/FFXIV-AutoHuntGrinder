@@ -1,8 +1,8 @@
 using AutoHuntGrinder.Core.Custom;
+using AutoHuntGrinder.Core.Game.Player;
 using AutoHuntGrinder.Core.HuntingLog;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Marks;
-using ECommons.DalamudServices;
 using System.Threading;
 
 namespace AutoHuntGrinder.Core.Tasks;
@@ -529,8 +529,7 @@ public sealed class AutoHuntSession
 
     private static int Credited(in HuntTarget target) => Math.Min(target.Killed, target.Needed);
 
-    private static string CurrentJobAbbreviation()
-        => Svc.Objects.LocalPlayer?.ClassJob.ValueNullable?.Abbreviation.ExtractText() ?? string.Empty;
+    private static string CurrentJobAbbreviation() => CombatClass.CurrentAbbreviation();
 
     private struct BillLedger(byte markIndex)
     {

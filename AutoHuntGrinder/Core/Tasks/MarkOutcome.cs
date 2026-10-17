@@ -13,4 +13,5 @@ public enum MarkOutcome
     NotHeld,
     KillsNotCounted,
     CombatUnavailable,
+    NoCombatJob,
 }

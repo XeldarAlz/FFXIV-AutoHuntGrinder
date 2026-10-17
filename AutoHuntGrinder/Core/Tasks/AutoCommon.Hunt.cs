@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Game.Player;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
 using AutoHuntGrinder.Core.Marks;
@@ -91,9 +92,9 @@ public abstract partial class AutoCommon
             return MarkOutcome.NotHeld;
         }
 
-        if (!CombatAnswering())
+        if (CombatBlocker() is { } blocked)
         {
-            return MarkOutcome.CombatUnavailable;
+            return blocked;
         }
 
         var hunt = CreateMarkHunt(bill, target, status, fateWait);
@@ -127,9 +128,9 @@ public abstract partial class AutoCommon
             return MarkOutcome.NotHeld;
         }
 
-        if (!CombatAnswering())
+        if (CombatBlocker() is { } blocked)
         {
-            return MarkOutcome.CombatUnavailable;
+            return blocked;
         }
 
         var hunt = CreateQuarryHunt(objective, name, sourceName);
@@ -149,15 +150,23 @@ public abstract partial class AutoCommon
         return await RunHunt(hunt);
     }
 
-    private bool CombatAnswering()
+    // A crafter or gatherer has nothing to attack with (issue #13), and without the combat plugin nothing presses the
+    // attacks. Checked before every mark, so a job changed during a pause is caught before the next approach.
+    private MarkOutcome? CombatBlocker()
     {
+        if (!CombatClass.Equipped())
+        {
+            Warn($"Hunt: {CombatClass.CurrentAbbreviation()} is a crafter or gatherer, so marks cannot be fought");
+            return MarkOutcome.NoCombatJob;
+        }
+
         if (BossModIPC.Instance.IsAvailable)
         {
-            return true;
+            return null;
         }
 
         Warn("Hunt: the combat plugin is not answering, so marks cannot be fought");
-        return false;
+        return MarkOutcome.CombatUnavailable;
     }
 
     private async Task<MarkOutcome> RunHunt(MarkHuntContext hunt)

@@ -1,5 +1,6 @@
 using AutoHuntGrinder.Core.Custom;
 using AutoHuntGrinder.Core.External;
+using AutoHuntGrinder.Core.Game.Player;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
 using AutoHuntGrinder.Core.Marks;
@@ -53,7 +54,7 @@ internal sealed partial class AutoHuntController
             return;
         }
 
-        if (!RequiredPluginsReady())
+        if (!RequiredPluginsReady() || !OnCombatClass())
         {
             return;
         }
@@ -71,7 +72,7 @@ internal sealed partial class AutoHuntController
             return;
         }
 
-        if (!RequiredPluginsReady())
+        if (!RequiredPluginsReady() || !OnCombatClass())
         {
             return;
         }
@@ -90,7 +91,7 @@ internal sealed partial class AutoHuntController
             return;
         }
 
-        if (!RequiredPluginsReady())
+        if (!RequiredPluginsReady() || !OnCombatClass())
         {
             return;
         }
@@ -126,7 +127,7 @@ internal sealed partial class AutoHuntController
         var configuration = Plugin.Instance.Configuration;
         var marks = RankFarmSelection.Marks(configuration);
         var worlds = RankFarmSelection.Worlds(configuration.FarmVisitWorlds);
-        if (marks.Length == 0 || worlds.Length == 0 || !RequiredPluginsReady()) return;
+        if (marks.Length == 0 || worlds.Length == 0 || !RequiredPluginsReady() || !OnCombatClass()) return;
         if (configuration.FarmVisitWorlds && (!LifestreamIPC.Instance.Available || LifestreamIPC.Instance.IsBusy()))
         {
             ECommons.DalamudServices.Svc.Chat.PrintError($"{AhgConstants.LogPrefix} Cannot start world visits: Lifestream is unavailable or busy.");
@@ -167,6 +168,20 @@ internal sealed partial class AutoHuntController
         var missing = ExternalPlugins.MissingRequiredNames();
         Diag($"Start aborted: required plugins missing ({missing}).");
         ECommons.DalamudServices.Svc.Chat.PrintError($"{AhgConstants.LogPrefix} Cannot start: install all required plugins first ({missing}).");
+        return false;
+    }
+
+    // A Hunting Log run equips its own gearset, so only the other modes need a combat class to start on (issue #13).
+    private static bool OnCombatClass()
+    {
+        if (CombatClass.Equipped())
+        {
+            return true;
+        }
+
+        var job = CombatClass.CurrentAbbreviation();
+        Diag($"Start aborted: {job} is a crafter or gatherer.");
+        ECommons.DalamudServices.Svc.Chat.PrintError($"{AhgConstants.LogPrefix} Cannot start on {job}: switch to a combat job first.");
         return false;
     }
 

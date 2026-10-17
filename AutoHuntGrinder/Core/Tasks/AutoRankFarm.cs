@@ -77,7 +77,7 @@ internal sealed class AutoRankFarm(AutoHuntSession session, HuntProgress progres
 
     private protected override void OnObjectiveFinished(in HuntObjective objective, MarkOutcome outcome)
     {
-        if (outcome is MarkOutcome.Cancelled or MarkOutcome.CombatUnavailable) return;
+        if (outcome is MarkOutcome.Cancelled or MarkOutcome.CombatUnavailable or MarkOutcome.NoCombatJob) return;
         farm.CompleteAttempt(objective.NameId, outcome is not (MarkOutcome.Killed or MarkOutcome.NotFound));
     }
 

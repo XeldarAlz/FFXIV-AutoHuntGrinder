@@ -1,3 +1,4 @@
+using AutoHuntGrinder.Core.Game.Player;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
 using ECommons.DalamudServices;
@@ -473,6 +474,9 @@ internal sealed class AutoHunt(IReadOnlyList<HuntBill> bills, AutoHuntSession se
                 return false;
             case MarkOutcome.CombatUnavailable:
                 Svc.Chat.PrintError($"{AhgConstants.LogPrefix} The combat plugin stopped answering, so the hunt stops.");
+                return false;
+            case MarkOutcome.NoCombatJob:
+                Svc.Chat.PrintError($"{AhgConstants.LogPrefix} {CombatClass.CurrentAbbreviation()} cannot fight marks, so the hunt stops; switch to a combat job and start again.");
                 return false;
             case MarkOutcome.Died:
                 GiveUp(stop, outcome);
