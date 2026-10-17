@@ -522,8 +522,15 @@ public abstract partial class AutoCommon
         };
     }
 
+    // A mark perched this far above the character's feet takes no damage from below even when the distance and the
+    // line of sight pass (issue #14), so it counts as out of reach and the reposition heads for its floor.
+    private const float MarkReachRiseMeters = 3f;
+
     private static bool MarkWithinReach(in MarkSighting live, float meters)
-        => live.DistanceToHitbox <= meters && MarkFinder.HasLineOfSight(live);
+        => live.DistanceToHitbox <= meters && MarkFinder.HasLineOfSight(live) && !PerchedAbove(live);
+
+    private static bool PerchedAbove(in MarkSighting live)
+        => Svc.Objects.LocalPlayer is { } player && live.Position.Y - player.Position.Y > MarkReachRiseMeters;
 
     private void EnsureHuntCombatPreset()
     {

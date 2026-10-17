@@ -247,7 +247,10 @@ public abstract partial class AutoCommon
                     Warn($"Travel: stuck {stalls} times under water {DistanceTo(target):F0}m short of the spot in {zoneName}; teleporting out of the water");
                     if (await TryTeleportShortcut(territoryId, target, $"{scope}-water", TeleportPurpose.Water))
                     {
+                        // The budget was sized for the hop that wedged; the trip now starts over from the aetheryte (issue #10).
                         stalls = 0;
+                        budgetMs = TravelBudgetMs(target);
+                        deadline = Environment.TickCount64 + budgetMs;
                         continue;
                     }
                 }

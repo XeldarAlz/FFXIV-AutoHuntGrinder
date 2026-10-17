@@ -23,6 +23,10 @@ public abstract partial class AutoCommon
     private const float LandingBackOffMeters = 8f;
     private const int LandingBackOffMs = 1_500;
     private const float LandsOnTheSpot = 0f;
+    // A ring point that snapped to a terrace below the mark's floor lands the character where it cannot hit the mark
+    // (issue #14); such spots sort after every spot on the mark's level and serve only as the fallback.
+    private const float LandingSameFloorMeters = 3f;
+    private const float LandingLowerFloorPenaltyMeters = 1000f;
 
     private readonly Vector3[] landingSpots = new Vector3[LandingCandidateCount];
 
@@ -196,7 +200,7 @@ public abstract partial class AutoCommon
             return found;
         }
 
-        SortNearestFirst(spots, found, from);
+        SortNearestFirst(spots, found, from, around);
         if (LandingFloor(navmesh, around, allowUnlandable) is { } lastResort)
         {
             spots[found++] = lastResort;
@@ -205,14 +209,14 @@ public abstract partial class AutoCommon
         return found;
     }
 
-    private static void SortNearestFirst(Vector3[] spots, int count, Vector3 from)
+    private static void SortNearestFirst(Vector3[] spots, int count, Vector3 from, Vector3 around)
     {
         for (var sortedCount = 1; sortedCount < count; sortedCount++)
         {
             var spot = spots[sortedCount];
-            var distance = GroundDistance.SquaredBetween(from, spot);
+            var order = LandingOrder(spot, from, around);
             var slot = sortedCount;
-            while (slot > 0 && GroundDistance.SquaredBetween(from, spots[slot - 1]) > distance)
+            while (slot > 0 && LandingOrder(spots[slot - 1], from, around) > order)
             {
                 spots[slot] = spots[slot - 1];
                 slot--;
@@ -220,6 +224,14 @@ public abstract partial class AutoCommon
 
             spots[slot] = spot;
         }
+    }
+
+    private static float LandingOrder(Vector3 spot, Vector3 from, Vector3 around)
+    {
+        var order = GroundDistance.SquaredBetween(from, spot);
+        return spot.Y < around.Y - LandingSameFloorMeters
+            ? order + LandingLowerFloorPenaltyMeters * LandingLowerFloorPenaltyMeters
+            : order;
     }
 
     private static Vector3? LandingFloor(NavmeshIPC navmesh, Vector3 point, bool allowUnlandable)
