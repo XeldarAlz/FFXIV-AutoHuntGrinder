@@ -237,6 +237,7 @@
   "changelog.new": "Yeni",
   "changelog.changes.one": "{0} değişiklik",
   "changelog.changes.other": "{0} değişiklik",
+  "changelog.r11010.1": "Düzeltildi: Yumemi ve Naked Yumemi'ye hiç ulaşılamıyordu, çünkü karakter The Ruby Sea'deki The Exile'ın tavanına doğru dalıyordu; artık yüzeye çıktıktan veya sudan ışınlandıktan sonra da girişten yüzerek giriyor",
   "changelog.r11000.1": "Eklendi: Ayarlar > İnsanlaştırıcı altında Savaşta hareket: her hedef için kaçınma gecikmesi, hareket gecikmesi ve tehlikeden ek pay seçilir, böylece aynı hedefteki karakterler artık aynı anda kaçmaz",
   "changelog.r11000.2": "Düzeltildi: Zanaatkâr veya toplayıcıyla başlatılan çalışma ilk hedefe yürüyüp orada dikiliyordu; artık bir mesajla durur ve molada değiştirilen iş, çalışmayı sonraki hedeften önce durdurur",
   "changelog.r11000.3": "Düzeltildi: Dravanian Forelands'daki Syricta gibi karakterin üstünde tüneyen hedeflere dakikalarca aşağıdan vurulamadan saldırılıyordu; karakter artık hedefin seviyesine iner veya ona yürüyerek çıkar",

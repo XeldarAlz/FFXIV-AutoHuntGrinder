@@ -237,6 +237,7 @@
   "changelog.new": "New",
   "changelog.changes.one": "{0} change",
   "changelog.changes.other": "{0} changes",
+  "changelog.r11010.1": "Fixed Yumemi and Naked Yumemi never being reached: the character dove straight at the roof of The Exile in The Ruby Sea; it now swims in through the entrance, also after surfacing or a teleport out of the water",
   "changelog.r11000.1": "Added Combat movement under Settings > Humanizer: a dodge delay, a movement delay and extra room from danger rolled for every mark, so characters on the same mark no longer dodge in lockstep",
   "changelog.r11000.2": "Fixed a run started on a crafter or gatherer walking to the first mark and standing there; it now stops with a message, and a job changed during a pause stops the run before the next mark",
   "changelog.r11000.3": "Fixed marks perched above the character, such as Syricta in the Dravanian Forelands, being fought from below for minutes without a hit; the character now lands on the mark's level or walks up to it",

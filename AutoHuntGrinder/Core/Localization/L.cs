@@ -260,6 +260,11 @@ internal static partial class L
         public static readonly LocString New = new("changelog.new", "New");
         public static readonly LocPlural Changes = new("changelog.changes", "{0} change", "{0} changes");
 
+        public static readonly LocString[] Release11010 =
+        [
+            new("changelog.r11010.1", "Fixed Yumemi and Naked Yumemi never being reached: the character dove straight at the roof of The Exile in The Ruby Sea; it now swims in through the entrance, also after surfacing or a teleport out of the water"),
+        ];
+
         public static readonly LocString[] Release11000 =
         [
             new("changelog.r11000.1", "Added Combat movement under Settings > Humanizer: a dodge delay, a movement delay and extra room from danger rolled for every mark, so characters on the same mark no longer dodge in lockstep"),

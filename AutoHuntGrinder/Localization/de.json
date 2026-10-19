@@ -237,6 +237,7 @@
   "changelog.new": "Neu",
   "changelog.changes.one": "{0} Änderung",
   "changelog.changes.other": "{0} Änderungen",
+  "changelog.r11010.1": "Behoben: Yumemi und Naked Yumemi wurden nie erreicht, weil der Charakter direkt auf das Dach von The Exile in The Ruby Sea zutauchte; er schwimmt jetzt durch den Eingang hinein, auch nach dem Auftauchen oder einem Teleport aus dem Wasser",
   "changelog.r11000.1": "Hinzugefügt: Kampfbewegung unter Einstellungen > Humanizer: Für jedes Ziel werden Ausweichverzögerung, Bewegungsverzögerung und zusätzlicher Abstand zur Gefahr ausgewürfelt, damit Figuren am selben Ziel nicht mehr im Gleichschritt ausweichen",
   "changelog.r11000.2": "Behoben: Ein auf einem Handwerker oder Sammler gestarteter Lauf lief zum ersten Ziel und blieb dort stehen; er stoppt jetzt mit einer Meldung, und ein in der Pause gewechselter Job stoppt den Lauf vor dem nächsten Ziel",
   "changelog.r11000.3": "Behoben: Ziele oberhalb des Charakters, etwa Syricta im Dravanischen Hinterland, wurden minutenlang ohne Treffer von unten bekämpft; der Charakter landet jetzt auf der Ebene des Ziels oder läuft zu ihr hinauf",
