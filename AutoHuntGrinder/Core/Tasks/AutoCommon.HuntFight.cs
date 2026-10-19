@@ -204,6 +204,16 @@ public abstract partial class AutoCommon
             }
 
             var legScope = $"{scope}-approach#{legs + 1}";
+            if (EnclosureEntranceAhead(hunt.TerritoryId, destination, out var enclosure))
+            {
+                if (!await TravelToEntrance(hunt.TerritoryId, enclosure, legScope))
+                {
+                    return CancelToken.IsCancellationRequested ? MarkFight.Cancelled : MarkFight.Unreachable;
+                }
+
+                continue;
+            }
+
             var plan = await PlanLeg(hunt.TerritoryId, destination, MarkFinder.HasLineOfSight(live) ? approach : MinLegToleranceMeters, MarkRideMinMeters, mountingAllowed, groundLegFailed, legScope);
             if (CancelToken.IsCancellationRequested)
             {

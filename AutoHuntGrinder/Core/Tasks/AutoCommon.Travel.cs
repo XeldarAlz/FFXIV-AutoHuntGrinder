@@ -100,6 +100,31 @@ public abstract partial class AutoCommon
         return false;
     }
 
+    private static bool EnclosureEntranceAhead(uint territoryId, Vector3 destination, out Enclosure enclosure)
+    {
+        if (Svc.Objects.LocalPlayer is not { } player)
+        {
+            enclosure = default;
+            return false;
+        }
+
+        return Enclosures.TryFindEntranceAhead(territoryId, player.Position, destination, out enclosure);
+    }
+
+    // The full trip, with its whole recovery ladder, to where a direct leg into the enclosure can start.
+    private async Task<bool> TravelToEntrance(uint territoryId, Enclosure enclosure, string scope)
+    {
+        Diag($"{scope}: the way into {enclosure.Name} is its entrance at {FormatPosition(enclosure.Entrance)}, {DistanceTo(enclosure.Entrance):F0}m away; travelling there first");
+        if (!await TravelTo(territoryId, enclosure.Entrance, Enclosures.EntranceArriveMeters))
+        {
+            Diag($"{scope}: could not reach the entrance to {enclosure.Name}");
+            return false;
+        }
+
+        Diag($"{scope}: at the entrance to {enclosure.Name}; heading in");
+        return true;
+    }
+
     private async Task<bool> WaitForPlayerReady()
     {
         if (CancelToken.IsCancellationRequested)
@@ -191,7 +216,16 @@ public abstract partial class AutoCommon
             }
 
             var scope = $"travel-leg#{leg}";
-            var plan = await PlanLeg(territoryId, target, arriveWithin, MountMinMeters, mountingAllowed, groundStalled || stalls > 0, scope);
+            // Every leg asks again, so a re-dive after surfacing or escaping the water also goes in through the entrance.
+            var entering = EnclosureEntranceAhead(territoryId, target, out var enclosure);
+            var legTarget = entering ? enclosure.Entrance : target;
+            var legArriveWithin = entering ? Enclosures.EntranceArriveMeters : arriveWithin;
+            if (entering)
+            {
+                Diag($"{scope}: the spot is inside {enclosure.Name}; heading for its entrance at {FormatPosition(enclosure.Entrance)} first, {DistanceTo(enclosure.Entrance):F0}m away");
+            }
+
+            var plan = await PlanLeg(territoryId, legTarget, legArriveWithin, MountMinMeters, mountingAllowed, groundStalled || stalls > 0, scope);
             if (CancelToken.IsCancellationRequested)
             {
                 return ZoneTravelResult.Failed;
@@ -202,7 +236,7 @@ public abstract partial class AutoCommon
                 if (landmassTeleports < MaxLandmassTeleports)
                 {
                     landmassTeleports++;
-                    if (await TryTeleportToConnectedAetheryte(territoryId, target, arriveWithin, scope))
+                    if (await TryTeleportToConnectedAetheryte(territoryId, legTarget, legArriveWithin, scope))
                     {
                         continue;
                     }
@@ -212,9 +246,15 @@ public abstract partial class AutoCommon
                 return ZoneTravelResult.Failed;
             }
 
-            var outcome = await RunTravelLeg(plan, target, arriveWithin, mountingAllowed, (int)remainingMs, scope, zoneName);
+            var outcome = await RunTravelLeg(plan, legTarget, legArriveWithin, mountingAllowed, (int)remainingMs, scope, zoneName);
             if (outcome == LegOutcome.Remount || CancelToken.IsCancellationRequested || Arrived(target, destination, arriveWithin))
             {
+                continue;
+            }
+
+            if (entering && WithinReach(legTarget, legArriveWithin))
+            {
+                Diag($"{scope}: at the entrance to {enclosure.Name}; heading in");
                 continue;
             }
 
@@ -746,7 +786,7 @@ public abstract partial class AutoCommon
 
     private static int TravelBudgetMs(Vector3 target)
     {
-        var distance = Svc.Objects.LocalPlayer is { } player ? Vector3.Distance(player.Position, target) : 0f;
+        var distance = Svc.Objects.LocalPlayer is { } player ? Enclosures.RouteMeters(Svc.ClientState.TerritoryType, player.Position, target) : 0f;
         var travelMs = distance / TravelMinSpeedMetersPerSecond * TimeUnits.MillisecondsPerSecond;
         return (int)Math.Min(TravelMaxBudgetMs, TravelBaseBudgetMs + travelMs);
     }

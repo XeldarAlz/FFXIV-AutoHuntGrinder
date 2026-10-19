@@ -422,6 +422,11 @@ public abstract partial class AutoCommon
             return MarkLeg.Arrived;
         }
 
+        if (EnclosureEntranceAhead(hunt.TerritoryId, point, out var enclosure) && !await TravelToEntrance(hunt.TerritoryId, enclosure, scope))
+        {
+            return MarkLeg.Failed;
+        }
+
         var sighted = false;
         var nextScanAt = 0L;
         var goal = point;

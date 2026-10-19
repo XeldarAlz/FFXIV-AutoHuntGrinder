@@ -101,6 +101,22 @@ hunt.RouteReachable = false;
 Check(await hunt.Approach() == "Unreachable" && hunt.Moves == 0, "unreachable path does not enter combat");
 
 hunt = Reset();
+hunt.EntranceAhead = new(new(0, 0, -100));
+MarkFinder.Mark = MarkFinder.Mark with { DistanceToHitbox = 29 };
+hunt.OnMove = move =>
+{
+    Check(hunt.EntranceTrips == 1, "a mark inside an enclosure is approached from its entrance");
+    MarkFinder.Mark = MarkFinder.Mark with { DistanceToHitbox = 9 };
+};
+Check(await hunt.Approach() == "Reached" && hunt.Moves == 1 && hunt.EntranceTrips == 1, "the entrance trip is not charged as an approach leg");
+
+hunt = Reset();
+hunt.EntranceAhead = new(new(0, 0, -100));
+hunt.EntranceReachable = false;
+MarkFinder.Mark = MarkFinder.Mark with { DistanceToHitbox = 29 };
+Check(await hunt.Approach() == "Unreachable" && hunt.Moves == 0 && hunt.EntranceTrips == 1, "an unreachable entrance ends the approach without diving at the roof");
+
+hunt = Reset();
 MarkFinder.Visible = false;
 var began = Environment.TickCount64;
 hunt.OnMove = move =>

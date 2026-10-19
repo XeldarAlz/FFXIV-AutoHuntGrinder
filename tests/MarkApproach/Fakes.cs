@@ -2,6 +2,7 @@ global using Environment = MarkApproach.Tests.Clock;
 using System.Numerics;
 using AutoHuntGrinder.Core.Hunts;
 using AutoHuntGrinder.Core.Ipc;
+using AutoHuntGrinder.Core.Travel;
 using Dalamud.Game.ClientState.Conditions;
 using ECommons.DalamudServices;
 
@@ -81,6 +82,7 @@ namespace AutoHuntGrinder.Core.Hunts
 namespace AutoHuntGrinder.Core.Travel
 {
     internal static class GroundDistance { public static float Between(Vector3 a, Vector3 b) => Vector3.Distance(a, b); }
+    internal readonly record struct Enclosure(Vector3 Entrance);
 }
 
 namespace AutoHuntGrinder.Core.Ipc
@@ -145,6 +147,9 @@ namespace AutoHuntGrinder.Core.Tasks
         internal bool Ride;
         internal bool RouteReachable = true;
         internal float PlannedReach;
+        internal Enclosure? EntranceAhead;
+        internal bool EntranceReachable = true;
+        internal int EntranceTrips;
         internal Task<string> Approach() => AsText(CloseOnMark(new(), 1, "test"));
         internal Task<string> Engage() => AsText(EngageMark(new(), 1, 0, "test"));
         internal Task Reposition() => RepositionToMark(new(), 1, "test");
@@ -164,6 +169,17 @@ namespace AutoHuntGrinder.Core.Tasks
             return Task.FromResult(true);
         }
         private Task NextFrame(int frames) { Environment.TickCount64 += frames * 100; OnFrame(); return Task.CompletedTask; }
+        private bool EnclosureEntranceAhead(uint zone, Vector3 goal, out Enclosure enclosure)
+        {
+            enclosure = EntranceAhead ?? default;
+            return EntranceAhead is not null;
+        }
+        private Task<bool> TravelToEntrance(uint zone, Enclosure enclosure, string scope)
+        {
+            EntranceTrips++;
+            if (EntranceReachable) EntranceAhead = null;
+            return Task.FromResult(EntranceReachable);
+        }
         private static Task<bool> RecoverIfOffMesh(uint zone, Vector3 goal, string scope) => Task.FromResult(false);
         private static bool TerritoryAllowsMount(uint zone) => true;
         private static Task<bool> LandAndDismount(Vector3 goal, float gap, string scope) { Svc.Condition.Mounted = false; return Task.FromResult(true); }
