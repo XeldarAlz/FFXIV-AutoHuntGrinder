@@ -328,6 +328,8 @@
   "settings.general.window": "Окно",
   "settings.general.openOnLogin": "Открывать при входе",
   "settings.general.openOnLoginHelp": "Автоматически открывать главное окно при следующем входе в игру.",
+  "settings.general.dragAnywhere": "Перетаскивать за любое место",
+  "settings.general.dragAnywhereHelp": "Окно перемещается при перетаскивании за любое его место. Если выключено, его двигает только верхняя панель.",
   "settings.general.behavior": "Поведение",
   "settings.general.autoPause": "Автопауза в контенте",
   "settings.general.autoPauseHelp": "Приостанавливает запуск, пока вы в подземелье, испытании, рейде или другом инстансе, и продолжает его, когда вы вернётесь. Заказы и статистика сессии сохраняются.",

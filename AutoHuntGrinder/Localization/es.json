@@ -328,6 +328,8 @@
   "settings.general.window": "Ventana",
   "settings.general.openOnLogin": "Abrir al iniciar sesión",
   "settings.general.openOnLoginHelp": "Abre la ventana principal automáticamente la próxima vez que inicies sesión.",
+  "settings.general.dragAnywhere": "Arrastrar desde cualquier punto",
+  "settings.general.dragAnywhereHelp": "Mueve la ventana arrastrando desde cualquier punto de su interior. Si está desactivado, solo la barra superior la mueve.",
   "settings.general.behavior": "Comportamiento",
   "settings.general.autoPause": "Pausa automática en contenido",
   "settings.general.autoPauseHelp": "Pausa la sesión mientras estás en una mazmorra, prueba, incursión u otro contenido instanciado, y la reanuda al volver fuera. Tus contratos y estadísticas se conservan.",

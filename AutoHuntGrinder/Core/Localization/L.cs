@@ -410,6 +410,8 @@ internal static partial class L
         public static readonly LocString GeneralWindow = new("settings.general.window", "Window");
         public static readonly LocString OpenOnLogin = new("settings.general.openOnLogin", "Open on login");
         public static readonly LocString OpenOnLoginHelp = new("settings.general.openOnLoginHelp", "Pop the main window automatically the next time you log in.");
+        public static readonly LocString DragAnywhere = new("settings.general.dragAnywhere", "Drag from anywhere");
+        public static readonly LocString DragAnywhereHelp = new("settings.general.dragAnywhereHelp", "Move the window by dragging anywhere inside it. When off, only the top bar moves it.");
         public static readonly LocString GeneralBehavior = new("settings.general.behavior", "Behavior");
         public static readonly LocString AutoPause = new("settings.general.autoPause", "Auto-pause in content");
         public static readonly LocString AutoPauseHelp = new("settings.general.autoPauseHelp", "Pause the run while you are inside a duty, trial, raid, or any other instanced content, then resume it once you are back outside. Your bills and session stats are kept.");

@@ -328,6 +328,8 @@
   "settings.general.window": "窗口",
   "settings.general.openOnLogin": "登录时打开",
   "settings.general.openOnLoginHelp": "下次登录时自动打开主窗口。",
+  "settings.general.dragAnywhere": "任意位置拖动",
+  "settings.general.dragAnywhereHelp": "在窗口内任意位置拖动即可移动窗口。关闭后只能通过顶部栏移动。",
   "settings.general.behavior": "行为",
   "settings.general.autoPause": "副本中自动暂停",
   "settings.general.autoPauseHelp": "在副本、讨伐战、团队副本或其他实例化内容中时暂停运行，回到外面后继续。你的委托和本次统计会保留。",

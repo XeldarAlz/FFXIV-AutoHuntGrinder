@@ -328,6 +328,8 @@
   "settings.general.window": "Pencere",
   "settings.general.openOnLogin": "Girişte aç",
   "settings.general.openOnLoginHelp": "Bir sonraki girişinizde ana pencereyi otomatik açar.",
+  "settings.general.dragAnywhere": "Her yerden sürükle",
+  "settings.general.dragAnywhereHelp": "Pencereyi içinde herhangi bir yerden sürükleyerek taşır. Kapalıyken yalnızca üst çubuk taşır.",
   "settings.general.behavior": "Davranış",
   "settings.general.autoPause": "İçerikte otomatik duraklat",
   "settings.general.autoPauseHelp": "Bir zindan, sınav, baskın ya da başka bir örneklenmiş içerikteyken çalışmayı duraklatır, dışarı çıkınca sürdürür. Emirleriniz ve oturum istatistikleriniz korunur.",

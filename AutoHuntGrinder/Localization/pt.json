@@ -328,6 +328,8 @@
   "settings.general.window": "Janela",
   "settings.general.openOnLogin": "Abrir ao entrar",
   "settings.general.openOnLoginHelp": "Abre a janela principal automaticamente na próxima vez que você entrar.",
+  "settings.general.dragAnywhere": "Arrastar de qualquer lugar",
+  "settings.general.dragAnywhereHelp": "Move a janela ao arrastar de qualquer ponto dentro dela. Desativado, só a barra superior a move.",
   "settings.general.behavior": "Comportamento",
   "settings.general.autoPause": "Pausar automaticamente em conteúdo",
   "settings.general.autoPauseHelp": "Pausa a sessão enquanto você está em uma masmorra, provação, raide ou outro conteúdo instanciado, e retoma quando você volta. Seus contratos e estatísticas são mantidos.",

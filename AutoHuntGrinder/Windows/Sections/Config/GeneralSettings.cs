@@ -33,6 +33,12 @@ internal static class GeneralSettings
             SettingsControls.ToggleWidth,
             () => SettingsControls.DrawToggle(configuration, () => configuration.AutoShowOnLogin, value => configuration.AutoShowOnLogin = value, "##ahg_general_autoshow"),
             SettingsRow.ToggleHeight);
+
+        SettingsRow.Draw(Loc.T(L.Settings.DragAnywhere),
+            Loc.T(L.Settings.DragAnywhereHelp),
+            SettingsControls.ToggleWidth,
+            () => SettingsControls.DrawToggle(configuration, () => configuration.DragWindowFromAnywhere, value => configuration.DragWindowFromAnywhere = value, "##ahg_general_draganywhere"),
+            SettingsRow.ToggleHeight);
     }
 
     private static void DrawBehaviorGroup(Configuration configuration)

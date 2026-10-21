@@ -328,6 +328,8 @@
   "settings.general.window": "Fenster",
   "settings.general.openOnLogin": "Beim Einloggen öffnen",
   "settings.general.openOnLoginHelp": "Öffnet das Hauptfenster beim nächsten Einloggen automatisch.",
+  "settings.general.dragAnywhere": "Überall ziehen",
+  "settings.general.dragAnywhereHelp": "Verschiebt das Fenster beim Ziehen an einer beliebigen Stelle. Ist das aus, verschiebt nur die obere Leiste das Fenster.",
   "settings.general.behavior": "Verhalten",
   "settings.general.autoPause": "Im Inhalt automatisch pausieren",
   "settings.general.autoPauseHelp": "Pausiert den Lauf, solange du in einem Dungeon, einer Prüfung, einem Raid oder anderem instanzierten Inhalt bist, und setzt ihn fort, sobald du wieder draußen bist. Deine Aufträge und Sitzungsstatistiken bleiben erhalten.",
