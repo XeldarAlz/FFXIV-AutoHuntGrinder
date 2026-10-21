@@ -237,6 +237,8 @@
   "changelog.new": "New",
   "changelog.changes.one": "{0} change",
   "changelog.changes.other": "{0} changes",
+  "changelog.r11020.1": "Fixed long sessions ending in a crash or a Start button that stops working; moving around no longer sets up new game hooks each time",
+  "changelog.r11020.2": "Fixed the character flying into the rock on its way to 59th Order Bedesman Bi Go inside the kobold tunnels of Outer La Noscea; when the flight route can't reach a mark in a tunnel or cave, it now flies to where the route ends (the tunnel mouth), lands and rides or walks the rest on the ground",
   "changelog.r11010.1": "Fixed Yumemi and Naked Yumemi never being reached: the character dove straight at the roof of The Exile in The Ruby Sea; it now swims in through the entrance, also after surfacing or a teleport out of the water",
   "changelog.r11000.1": "Added Combat movement under Settings > Humanizer: a dodge delay, a movement delay and extra room from danger rolled for every mark, so characters on the same mark no longer dodge in lockstep",
   "changelog.r11000.2": "Fixed a run started on a crafter or gatherer walking to the first mark and standing there; it now stops with a message, and a job changed during a pause stops the run before the next mark",

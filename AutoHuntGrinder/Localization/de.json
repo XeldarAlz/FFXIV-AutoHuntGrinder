@@ -237,6 +237,8 @@
   "changelog.new": "Neu",
   "changelog.changes.one": "{0} Änderung",
   "changelog.changes.other": "{0} Änderungen",
+  "changelog.r11020.1": "Behoben: Lange Sitzungen endeten mit einem Absturz oder einem Start-Button, der nicht mehr reagierte; Bewegungen richten nicht mehr jedes Mal neue Spiel-Hooks ein",
+  "changelog.r11020.2": "Behoben: Der Charakter flog auf dem Weg zu 59th Order Bedesman Bi Go in den Koboldtunneln von Outer La Noscea gegen den Fels; erreicht die Flugroute ein Ziel in einem Tunnel oder einer Höhle nicht, fliegt er jetzt bis zum Ende der Route (dem Tunneleingang), landet und reitet oder läuft den Rest am Boden",
   "changelog.r11010.1": "Behoben: Yumemi und Naked Yumemi wurden nie erreicht, weil der Charakter direkt auf das Dach von The Exile in The Ruby Sea zutauchte; er schwimmt jetzt durch den Eingang hinein, auch nach dem Auftauchen oder einem Teleport aus dem Wasser",
   "changelog.r11000.1": "Hinzugefügt: Kampfbewegung unter Einstellungen > Humanizer: Für jedes Ziel werden Ausweichverzögerung, Bewegungsverzögerung und zusätzlicher Abstand zur Gefahr ausgewürfelt, damit Figuren am selben Ziel nicht mehr im Gleichschritt ausweichen",
   "changelog.r11000.2": "Behoben: Ein auf einem Handwerker oder Sammler gestarteter Lauf lief zum ersten Ziel und blieb dort stehen; er stoppt jetzt mit einer Meldung, und ein in der Pause gewechselter Job stoppt den Lauf vor dem nächsten Ziel",

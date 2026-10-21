@@ -237,6 +237,8 @@
   "changelog.new": "Nouveau",
   "changelog.changes.one": "{0} changement",
   "changelog.changes.other": "{0} changements",
+  "changelog.r11020.1": "Correction des longues sessions qui se terminaient par un plantage ou un bouton Démarrer qui ne répondait plus ; les déplacements n'installent plus de nouveaux hooks dans le jeu à chaque fois",
+  "changelog.r11020.2": "Correction du personnage qui volait droit dans la roche en route vers 59th Order Bedesman Bi Go dans les tunnels kobolds d'Outer La Noscea ; quand la route aérienne n'atteint pas une cible dans un tunnel ou une grotte, il vole désormais jusqu'au bout de la route (l'entrée du tunnel), se pose et fait le reste au sol, sur sa monture ou à pied",
   "changelog.r11010.1": "Correction de Yumemi et Naked Yumemi jamais atteints : le personnage plongeait droit sur le toit de The Exile dans The Ruby Sea ; il entre désormais à la nage par l'entrée, y compris après une remontée à la surface ou une téléportation hors de l'eau",
   "changelog.r11000.1": "Ajout de Déplacements en combat dans Réglages > Humaniseur : pour chaque cible, un délai d'esquive, un délai de déplacement et une marge face au danger sont tirés, pour que les personnages sur la même cible n'esquivent plus en même temps",
   "changelog.r11000.2": "Correction d'une session lancée sur un artisan ou un récolteur qui marchait jusqu'à la première cible et y restait ; elle s'arrête maintenant avec un message, et un job changé pendant une pause arrête la session avant la cible suivante",

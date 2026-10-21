@@ -260,6 +260,12 @@ internal static partial class L
         public static readonly LocString New = new("changelog.new", "New");
         public static readonly LocPlural Changes = new("changelog.changes", "{0} change", "{0} changes");
 
+        public static readonly LocString[] Release11020 =
+        [
+            new("changelog.r11020.1", "Fixed long sessions ending in a crash or a Start button that stops working; moving around no longer sets up new game hooks each time"),
+            new("changelog.r11020.2", "Fixed the character flying into the rock on its way to 59th Order Bedesman Bi Go inside the kobold tunnels of Outer La Noscea; when the flight route can't reach a mark in a tunnel or cave, it now flies to where the route ends (the tunnel mouth), lands and rides or walks the rest on the ground"),
+        ];
+
         public static readonly LocString[] Release11010 =
         [
             new("changelog.r11010.1", "Fixed Yumemi and Naked Yumemi never being reached: the character dove straight at the roof of The Exile in The Ruby Sea; it now swims in through the entrance, also after surfacing or a teleport out of the water"),

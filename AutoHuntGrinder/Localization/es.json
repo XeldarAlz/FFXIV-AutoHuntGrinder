@@ -237,6 +237,8 @@
   "changelog.new": "Nuevo",
   "changelog.changes.one": "{0} cambio",
   "changelog.changes.other": "{0} cambios",
+  "changelog.r11020.1": "Corregido que las sesiones largas terminaran con un cierre inesperado o con un botón Iniciar que dejaba de responder; moverse ya no instala nuevos hooks en el juego cada vez",
+  "changelog.r11020.2": "Corregido que el personaje volara contra la roca camino de 59th Order Bedesman Bi Go dentro de los túneles kobold de Outer La Noscea; cuando la ruta de vuelo no alcanza un objetivo en un túnel o una cueva, ahora vuela hasta donde termina la ruta (la boca del túnel), aterriza y recorre el resto por tierra, montado o a pie",
   "changelog.r11010.1": "Corregido que Yumemi y Naked Yumemi nunca se alcanzaran: el personaje buceaba directo hacia el techo de The Exile en The Ruby Sea; ahora entra nadando por la entrada, también tras salir a la superficie o teletransportarse fuera del agua",
   "changelog.r11000.1": "Añadido Movimiento en combate en Ajustes > Humanizador: para cada objetivo se sortean un retraso de esquiva, un retraso de movimiento y margen extra frente al peligro, para que los personajes en el mismo objetivo ya no esquiven al unísono",
   "changelog.r11000.2": "Corregido que una sesión iniciada con un artesano o recolector caminara hasta el primer objetivo y se quedara allí; ahora se detiene con un mensaje, y un cambio de trabajo durante una pausa detiene la sesión antes del siguiente objetivo",

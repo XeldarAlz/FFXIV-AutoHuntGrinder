@@ -237,6 +237,8 @@
   "changelog.new": "Yeni",
   "changelog.changes.one": "{0} değişiklik",
   "changelog.changes.other": "{0} değişiklik",
+  "changelog.r11020.1": "Düzeltildi: Uzun oturumlar bir çökmeyle ya da artık çalışmayan bir Başlat düğmesiyle sona eriyordu; hareket artık her seferinde yeni oyun kancaları kurmuyor",
+  "changelog.r11020.2": "Düzeltildi: Karakter, Outer La Noscea'daki kobold tünellerinde bulunan 59th Order Bedesman Bi Go'ya giderken kayaya doğru uçuyordu; uçuş rotası bir tünel veya mağaradaki hedefe ulaşamadığında artık rotanın bittiği yere (tünel ağzına) uçar, iner ve kalan yolu yerden, binekle ya da yürüyerek gider",
   "changelog.r11010.1": "Düzeltildi: Yumemi ve Naked Yumemi'ye hiç ulaşılamıyordu, çünkü karakter The Ruby Sea'deki The Exile'ın tavanına doğru dalıyordu; artık yüzeye çıktıktan veya sudan ışınlandıktan sonra da girişten yüzerek giriyor",
   "changelog.r11000.1": "Eklendi: Ayarlar > İnsanlaştırıcı altında Savaşta hareket: her hedef için kaçınma gecikmesi, hareket gecikmesi ve tehlikeden ek pay seçilir, böylece aynı hedefteki karakterler artık aynı anda kaçmaz",
   "changelog.r11000.2": "Düzeltildi: Zanaatkâr veya toplayıcıyla başlatılan çalışma ilk hedefe yürüyüp orada dikiliyordu; artık bir mesajla durur ve molada değiştirilen iş, çalışmayı sonraki hedeften önce durdurur",
