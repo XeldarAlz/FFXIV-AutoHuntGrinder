@@ -11,6 +11,7 @@ internal static class GeneralSettings
         DrawLanguageGroup(configuration);
         DrawWindowGroup(configuration);
         DrawBehaviorGroup(configuration);
+        PostRunSettings.Draw(configuration);
         DrawFateGroup(configuration);
     }
 

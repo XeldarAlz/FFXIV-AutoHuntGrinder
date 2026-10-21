@@ -415,6 +415,10 @@ internal static partial class L
         public static readonly LocString GeneralBehavior = new("settings.general.behavior", "Behavior");
         public static readonly LocString AutoPause = new("settings.general.autoPause", "Auto-pause in content");
         public static readonly LocString AutoPauseHelp = new("settings.general.autoPauseHelp", "Pause the run while you are inside a duty, trial, raid, or any other instanced content, then resume it once you are back outside. Your bills and session stats are kept.");
+        public static readonly LocString PostRunGroup = new("settings.postRun.group", "Chat commands");
+        public static readonly LocString PostRunLabel = new("settings.postRun.label", "Run when the run finishes");
+        public static readonly LocString PostRunHelp = new("settings.postRun.help", "One command per line, each starting with a slash. They run when a run ends on its own, before the after-run action, and never after Stop or a failure.");
+        public static readonly LocString PostRunCaption = new("settings.postRun.caption", "Lines that do not start with a slash are skipped, so nothing is ever said in chat. Try /li home to head home or /ays m to hand off to AutoRetainer.");
 
         public static readonly LocString FateGroup = new("settings.fate.group", "FATE marks");
         public static readonly LocString FateHuntOthers = new("settings.fate.huntOthers", "Hunt other marks while a FATE is down");

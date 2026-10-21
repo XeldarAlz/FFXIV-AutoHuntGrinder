@@ -63,27 +63,45 @@ internal sealed partial class AutoHuntController
 
         ending.AfterActionDispatched = true;
         var action = Plugin.Instance.Configuration.AfterRun;
-        if (action == AfterRunAction.StayLoggedIn)
+        var commandBlock = Plugin.Instance.Configuration.PostRunCommands;
+        var hasCommands = !string.IsNullOrWhiteSpace(commandBlock);
+        if (action == AfterRunAction.StayLoggedIn && !hasCommands)
         {
-            Diag("Run completed by its stop condition; the after-run action is StayLoggedIn, nothing to do.");
+            Diag("Run completed by its stop condition; the after-run action is StayLoggedIn and there are no chat commands, nothing to do.");
             return false;
         }
 
         if (ending.DidNothing)
         {
-            Diag($"Run ended by its stop condition without doing any work; skipping after-run action {action}.");
+            Diag($"Run ended by its stop condition without doing any work; skipping chat commands and after-run action {action}.");
             return false;
         }
 
         Diag($"Run completed by its stop condition; starting after-run action {action}.");
         progress.SetPhase(HuntPhase.Finishing);
-        AutoCommon task = action == AfterRunAction.ReturnToInn ? new AutoReturnToInn() : new AutoAfterRun(action);
-        RunTask(task, () =>
+        if (!hasCommands && action == AfterRunAction.ReturnToInn)
         {
-            Diag($"After-run action {action} finished.");
-            ClearRun();
+            RunTask(new AutoReturnToInn(), () => FinishAfterAction(action));
+            return true;
+        }
+
+        RunTask(new AutoAfterRun(action, commandBlock), () =>
+        {
+            if (action != AfterRunAction.ReturnToInn)
+            {
+                FinishAfterAction(action);
+                return;
+            }
+
+            RunTask(new AutoReturnToInn(), () => FinishAfterAction(action));
         });
         return true;
+    }
+
+    private void FinishAfterAction(AfterRunAction action)
+    {
+        Diag($"After-run action {action} finished.");
+        ClearRun();
     }
 
     // Idempotent through Recorded, so an explicit Stop and a finished task can both call it.

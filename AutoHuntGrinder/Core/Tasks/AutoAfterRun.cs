@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace AutoHuntGrinder.Core.Tasks;
 
-public sealed class AutoAfterRun(AfterRunAction action) : AutoCommon
+public sealed class AutoAfterRun(AfterRunAction action, string commandBlock) : AutoCommon
 {
     private const int ReadyWaitMs = 20_000;
     private const int ConfirmationWaitMs = 6_000;
@@ -18,6 +18,7 @@ public sealed class AutoAfterRun(AfterRunAction action) : AutoCommon
     private const string CloseGameCommand = "/xlkill";
 
     private readonly AfterRunAction action = action;
+    private readonly string commandBlock = commandBlock;
 
     protected override async Task Execute()
     {
@@ -39,9 +40,15 @@ public sealed class AutoAfterRun(AfterRunAction action) : AutoCommon
         {
             if (!CancelToken.IsCancellationRequested)
             {
-                Warn($"After-run {action} skipped: no safe moment (combat, casting, or a zone change) within {ReadyWaitMs / TimeUnits.MillisecondsPerSecond}s.");
+                Warn($"After-run chat commands and {action} skipped: no safe moment (combat, casting, or a zone change) within {ReadyWaitMs / TimeUnits.MillisecondsPerSecond}s.");
             }
 
+            return;
+        }
+
+        await SendPostRunCommands();
+        if (CancelToken.IsCancellationRequested)
+        {
             return;
         }
 
@@ -53,6 +60,47 @@ public sealed class AutoAfterRun(AfterRunAction action) : AutoCommon
             case AfterRunAction.CloseGame:
                 await CloseGame();
                 break;
+        }
+    }
+
+    private async Task SendPostRunCommands()
+    {
+        var lines = commandBlock.Split('\n');
+        for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
+        {
+            if (CancelToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var command = lines[lineIndex].Trim();
+            if (command.Length == 0)
+            {
+                continue;
+            }
+
+            if (!command.StartsWith('/'))
+            {
+                Warn($"Post-run line skipped, commands must start with '/': {command}");
+                continue;
+            }
+
+            Status = "Sending chat commands";
+            SendPostRunCommand(command);
+            await DelayMs(AhgConstants.PostRunCommandSpacingMs);
+        }
+    }
+
+    private void SendPostRunCommand(string command)
+    {
+        try
+        {
+            Diag($"Post-run command: {command}");
+            Chat.ExecuteCommand(command);
+        }
+        catch (Exception exception)
+        {
+            RunLog.Error(exception, $"Post-run command '{command}' failed.");
         }
     }
 
