@@ -258,6 +258,12 @@ public abstract partial class AutoCommon
                 continue;
             }
 
+            if (plan.Stopover && WithinReach(plan.Target, plan.ToleranceFor(legArriveWithin)))
+            {
+                Diag($"{scope}: at the end of the air route, {DistanceTo(target):F0}m short of the spot; planning the rest from here");
+                continue;
+            }
+
             if (outcome == LegOutcome.MountFailed)
             {
                 mountingAllowed = false;
@@ -574,7 +580,7 @@ public abstract partial class AutoCommon
             }
 
             var route = await ProbeGroundRoute(floor, target);
-            var reaches = route.Kind == GroundRouteKind.Complete || (route.Kind == GroundRouteKind.Partial && route.ShortfallMeters <= reachMeters);
+            var reaches = route.Kind == RouteKind.Complete || (route.Kind == RouteKind.Partial && route.ShortfallMeters <= reachMeters);
             Diag($"{scope}: from {aetheryte.Name} the ground route is {route.Kind}, {route.LengthMeters:F0}m long and {route.ShortfallMeters:F0}m short of the spot");
             if (!reaches || route.LengthMeters >= shortest)
             {

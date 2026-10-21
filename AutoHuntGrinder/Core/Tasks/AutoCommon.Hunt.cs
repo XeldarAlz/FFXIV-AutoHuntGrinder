@@ -456,6 +456,7 @@ public abstract partial class AutoCommon
         var mountingAllowed = TerritoryAllowsMount(hunt.TerritoryId);
         var falseStarts = 0;
         var groundLegFailed = false;
+        var stoppedOver = false;
         while (true)
         {
             var plan = await PlanLeg(hunt.TerritoryId, point, hunt.PartialReachMeters, MountMinMeters, mountingAllowed, groundStalled: false, scope);
@@ -477,17 +478,19 @@ public abstract partial class AutoCommon
                 return await TravelTo(hunt.TerritoryId, point, arriveWithin) ? MarkLeg.Arrived : MarkLeg.Failed;
             }
 
-            goal = plan.Target;
-            goalTolerance = plan.ToleranceFor(arriveWithin);
+            // Where the air route ends is no stand-in for the point, only where the next leg starts.
+            var legGoal = plan.Target;
+            var legTolerance = plan.ToleranceFor(arriveWithin);
+            goal = plan.Stopover ? point : legGoal;
+            goalTolerance = plan.Stopover ? arriveWithin : legTolerance;
             if (AtGoal())
             {
                 return MarkLeg.Arrived;
             }
 
-            var legGoal = goal;
             Diag($"{scope}: going {plan.Mode} {DistanceTo(legGoal):F0}m to {FormatPosition(legGoal)}");
             var startedAt = Environment.TickCount64;
-            var operation = LegOperation(plan.Mode, legGoal, goalTolerance, StopCondition);
+            var operation = LegOperation(plan.Mode, legGoal, legTolerance, StopCondition);
             var completed = await RunCancellable(operation, TravelBudgetMs(legGoal), scope, StuckDetector.MoveStallAbort(scope));
             if (sighted)
             {
@@ -508,6 +511,13 @@ public abstract partial class AutoCommon
             if (operation.Fault is { } fault)
             {
                 Diag($"{scope}: the direct leg faulted: {fault.Message}");
+            }
+
+            if (plan.Stopover && !stoppedOver && WithinReach(legGoal, legTolerance))
+            {
+                stoppedOver = true;
+                Diag($"{scope}: at the end of the air route, {DistanceTo(point):F0}m short of the point; planning the rest from here");
+                continue;
             }
 
             var falseStart = completed && operation.Fault is null && Environment.TickCount64 - startedAt < StuckDetector.FalseStartMs;

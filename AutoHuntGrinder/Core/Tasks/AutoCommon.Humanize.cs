@@ -156,10 +156,10 @@ public abstract partial class AutoCommon
         return null;
     }
 
-    private static string? RejectWanderRoute(in GroundRoute route, float straight) => route.Kind switch
+    private static string? RejectWanderRoute(in ProbedRoute route, float straight) => route.Kind switch
     {
-        GroundRouteKind.Unknown => "no route",
-        GroundRouteKind.Partial => $"the route stops {route.ShortfallMeters:F1}m short (partial path)",
+        RouteKind.Unknown => "no route",
+        RouteKind.Partial => $"the route stops {route.ShortfallMeters:F1}m short (partial path)",
         _ => route.LengthMeters > straight * HumanizeMaxDetourRatio ? $"a {route.LengthMeters:F0}m detour for {straight:F0}m straight" : null,
     };
 
