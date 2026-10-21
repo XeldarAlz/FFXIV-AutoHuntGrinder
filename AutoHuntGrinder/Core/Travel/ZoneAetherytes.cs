@@ -21,6 +21,8 @@ internal static class ZoneAetherytes
     // Interacting with a shard, picking the stop and the short load take about as long as running this far.
     private const float AethernetOverheadMeters = 80f;
 
+    private enum StopFilter : byte { Any, Attuned, Usable }
+
     private static readonly Dictionary<uint, ZoneAetheryte[]> byTerritory = new();
     private static readonly Dictionary<uint, uint[]> attunableIdsByTerritory = new();
     private static readonly Dictionary<uint, ZoneGateway?> gatewayByTerritory = new();
@@ -90,19 +92,22 @@ internal static class ZoneAetherytes
 
     // Where an aethernet ride into the territory should stop: the node nearest the destination that has a shard to stand
     // at, because an invisible stop such as an airship landing can sit behind a lift the navmesh cannot use. A territory
-    // with only invisible stops (the Hinterlands gates) falls back to the nearest of those.
+    // with only invisible stops (the Hinterlands gates) falls back to the nearest of those. Either way the stop must be
+    // attuned: the game refuses the ride to one that is not and the character is left standing at the aetheryte.
     public static bool TryFindEntryNode(uint territoryId, Vector3 destination, out ZoneAetheryte entry)
     {
         var nodes = AethernetIn(territoryId);
-        var index = ClosestNode(nodes, destination, usableOnly: true);
+        var index = ClosestNode(nodes, destination, StopFilter.Usable);
         if (index < 0)
         {
-            index = ClosestNode(nodes, destination, usableOnly: false);
+            index = ClosestNode(nodes, destination, StopFilter.Attuned);
         }
 
         entry = index < 0 ? default : nodes[index].Stop;
         return index >= 0;
     }
+
+    public static bool HasAethernetStops(uint territoryId) => AethernetIn(territoryId).Length > 0;
 
     // The library boards at the node nearest the character, so that is the source measured here. The ride pays off only
     // when walking to it, plus walking from the best stop to the destination, beats walking straight there.
@@ -110,7 +115,7 @@ internal static class ZoneAetherytes
     {
         shortcut = default;
         var nodes = AethernetIn(territoryId);
-        var sourceIndex = ClosestNode(nodes, from, usableOnly: false);
+        var sourceIndex = ClosestNode(nodes, from, StopFilter.Any);
         if (sourceIndex < 0 || nodes[sourceIndex].PrimaryId == 0 || !IsUsable(nodes[sourceIndex]))
         {
             return false;
@@ -161,13 +166,20 @@ internal static class ZoneAetherytes
 
     private static bool IsUsable(AethernetNode node) => node.Visible && IsAttuned(node.Stop.Id);
 
-    private static int ClosestNode(AethernetNode[] nodes, Vector3 position, bool usableOnly)
+    private static bool Passes(AethernetNode node, StopFilter filter) => filter switch
+    {
+        StopFilter.Usable => IsUsable(node),
+        StopFilter.Attuned => IsAttuned(node.Stop.Id),
+        _ => true,
+    };
+
+    private static int ClosestNode(AethernetNode[] nodes, Vector3 position, StopFilter filter)
     {
         var closest = -1;
         var bestDistance = float.MaxValue;
         for (var index = 0; index < nodes.Length; index++)
         {
-            if (usableOnly && !IsUsable(nodes[index]))
+            if (!Passes(nodes[index], filter))
             {
                 continue;
             }

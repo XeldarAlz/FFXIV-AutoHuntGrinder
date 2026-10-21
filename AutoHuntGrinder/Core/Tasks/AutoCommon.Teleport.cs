@@ -169,6 +169,12 @@ public abstract partial class AutoCommon
                 return false;
             }
 
+            if (ZoneAetherytes.HasAethernetStops(territoryId) && !ZoneAetherytes.TryFindEntryNode(territoryId, destination, out _))
+            {
+                Warn($"{label}: no aethernet stop of {gateway.Name} into {zoneName} is attuned; attune one first; giving up");
+                return false;
+            }
+
             hopTerritoryId = gateway.TerritoryId;
             hopDestination = gateway.Position;
             Diag($"{label}: {zoneName} owns no aetheryte; going through {gateway.Name} and its aethernet");
